@@ -55,7 +55,8 @@ class Leds:
     # -- public ----------------------------------------------------------------------------
 
     def set_effect(self, name, color=None):
-        self.effect = name if name in EFFECTS else "off"
+        """name: one of EFFECTS, or "custom" (the engine leaves `frame` to the caller)."""
+        self.effect = name if name in EFFECTS or name == "custom" else "off"
         if color is not None:
             self.color = tuple(color)
 
@@ -133,6 +134,9 @@ class Leds:
 
     def _fx_off(self, t):
         self.frame = [(0, 0, 0)] * N
+
+    def _fx_custom(self, t):
+        pass
 
     def _fx_solid(self, t):
         self.frame = [self.color] * N

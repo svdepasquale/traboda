@@ -408,6 +408,13 @@ ART = {
 _cache = {}
 
 
+def register(name, rows):
+    """Adds an icon at runtime (apps keep their own art next to their code)."""
+    ART[name] = tuple(rows)
+    for key in [k for k in _cache if k[0] == name]:
+        del _cache[key]
+
+
 def _parse(name, scale):
     rows = ART[name]
     size = 16 * scale
