@@ -8,7 +8,9 @@ them to the badge's internal "music" folder, or to an SD card mounted on the Mac
   options: --port PORT (default: the badge found by tools/badge.py)
 
 The Walkman reads "Artist - Title.wav" as artist and title, so name the sources that way
-(the WAV keeps the source's name). 22050 Hz mono takes about 2.6 MB a minute and the
+(the WAV keeps the source's name; on the SD card without accents, which the badge cannot
+list there). With tracks in the card's music folder the Walkman plays those, not the
+internal ones. 22050 Hz mono takes about 2.6 MB a minute and the
 internal memory holds a few MB: files that do not fit are refused before anything is
 copied. The copy goes through mpremote, which stops Traboda OS (it takes over the REPL),
 so the badge is reset at the end and the OS starts again. Needs ffmpeg (brew install
@@ -22,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -38,10 +41,14 @@ def human(n):
         n /= 1024
 
 
-def wav_name(path):
-    """The source's name as a WAV, minus the characters FAT does not allow."""
+def wav_name(path, ascii_only=False):
+    """The source's name as a WAV, minus the characters FAT does not allow. ascii_only
+    for the SD card: the badge reads FAT names in code page 437, so an accented name
+    written by the Mac cannot be listed there ("Perché" becomes "Perche")."""
     base = os.path.splitext(os.path.basename(path))[0]
-    base = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", base).strip(" .")
+    if ascii_only:
+        base = unicodedata.normalize("NFKD", base).encode("ascii", "ignore").decode()
+    base = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", base).strip(" .")[:120]
     return (base or "brano") + ".wav"
 
 
@@ -95,8 +102,9 @@ def to_badge(port, files):
     args = []
     for path, name, _size in chosen:
         args += ["fs", "cp", path, ":/%s/%s" % (FOLDER, name), "+"]
-    r = mpremote(port, *(args + ["reset"]))
-    if r.returncode:
+    r = mpremote(port, *args[:-1]) if args else None
+    mpremote(port, "reset", capture=True)  # restarts the OS; the port drops, so no exit code
+    if r is not None and r.returncode:
         sys.exit("mpremote failed (exit %d)" % r.returncode)
     return chosen
 
@@ -127,11 +135,12 @@ def main():
         sys.exit("ffmpeg not found: brew install ffmpeg")
     if not args.sd and not shutil.which("mpremote"):
         sys.exit("mpremote not found: pip install mpremote")
+    port = None if args.sd else badge.find_port(args.port)
     with tempfile.TemporaryDirectory(prefix="traboda-music-") as tmp:
         files = []
         names = set()
         for src in args.files:
-            name = wav_name(src)
+            name = wav_name(src, bool(args.sd))
             if name in names:
                 print("  skipped %s: another file is also called %s" % (src, name))
                 continue
@@ -150,7 +159,7 @@ def main():
         if args.sd:
             done = to_sd(args.sd, files)
         else:
-            done = to_badge(badge.find_port(args.port), files)
+            done = to_badge(port, files)
     print("%d of %d copied, %s" % (len(done), len(files), human(sum(f[2] for f in done))))
 
 

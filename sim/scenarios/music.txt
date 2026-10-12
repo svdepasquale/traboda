@@ -8,3 +8,7 @@ app:music,wait:800,key:up,key:up,key:up,key:right,key:down,key:A,key:down,key:A,
 app:music,wait:800,key:A,wait:300,hold:B,wait:500,app:music,wait:600,snap:deck,hold:A,wait:400,snap:list,hold:B,wait:500,snap:home
 # Play key in the list with nothing loaded starts the selected track.
 app:music,wait:800,key:down,key:play,wait:400,snap:deck,hold:A,wait:400,hold:A,wait:400,snap:home
+# Repeat off, play the last track: at the end of the queue the deck stops (LEDs back to the user's effect).
+app:music,wait:800,key:up,key:up,key:A,key:up,key:up,key:A,wait:1500,snap:end,hold:A,wait:400,hold:A,wait:400,snap:home
+# Paused track: A on it in the list opens the deck without restarting; so does the now-playing row.
+app:music,wait:800,key:A,wait:300,key:A,wait:200,hold:A,wait:400,snap:list,key:A,wait:300,snap:same,hold:A,wait:400,key:up,key:up,key:up,key:up,key:A,wait:300,snap:now,hold:B,wait:500,snap:home

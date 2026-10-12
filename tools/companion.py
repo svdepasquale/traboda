@@ -14,8 +14,9 @@
   options: --port PORT, --interval SECONDS
 
 Run it with python3 (pip install pyserial) or `uv run tools/companion.py`. The badge is
-found by USB vendor id (tools/badge.py) and its port is opened without resetting it
-(tools/dev.py open_serial); unplugged, asleep or in Retro-Go, it is waited for. The badge
+found by USB vendor id (tools/badge.py, which asks mpremote: without it, pass --port) and
+its port is opened without resetting it (tools/dev.py open_serial); unplugged, in standby
+or in Retro-Go, it is waited for. The badge
 clock is set from the Mac on every connection. While this runs, mpremote, tools/dev.py and
 tools/music.py cannot use the port. Music and Spotify are asked what they play only when
 they are already running (macOS asks once to allow it); nothing is ever launched.
@@ -178,8 +179,8 @@ def session(port_name, args, host):
     finally:
         try:
             dev.close_serial(port)
-        except OSError:
-            pass
+        except OSError:                   # unplugged: the lines cannot move, the fd must go
+            port.close()
 
 
 def to_stdout(args, host):
@@ -199,6 +200,8 @@ def main():
     ap.add_argument("--notify", metavar="TEXT", help="send one notification and exit")
     ap.add_argument("--stdout", action="store_true", help="print the commands, do not send")
     args = ap.parse_args()
+    if args.interval <= 0:
+        ap.error("--interval must be more than 0")
     try:
         if args.stdout:
             to_stdout(args, host_name())

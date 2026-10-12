@@ -12,3 +12,5 @@ wait:800,key:left,wait:200,key:A,wait:1000,snap:lavoro,key:down,wait:300,snap:pa
 wait:800,key:right,key:A,wait:300,hold:A,wait:300,snap:conferma,hold:A,wait:600,snap:home
 # Quick panel over a running pomodoro (REDRAW on return), then B held goes home.
 wait:800,key:left,key:A,wait:300,hold:play,wait:400,hold:A,wait:400,snap:ridisegno,hold:B,wait:600,snap:home
+# Pomodoro paused: nothing runs, so the footer offers exit and one back leaves at once.
+wait:800,key:left,key:A,wait:300,key:A,wait:300,snap:sospeso,hold:A,wait:500,snap:home

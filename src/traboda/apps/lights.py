@@ -372,9 +372,10 @@ class Studio:
                     gfx.circle(x, y, 7, _OFF, True)
 
     def tick(self, force=False):
-        """Mirrors the engine's frame at ~10 fps; True when the preview was redrawn."""
+        """Mirrors the engine's frame at ~10 fps (not while the screen sleeps); True when
+        the preview was redrawn."""
         now = time.ticks_ms()
-        if not force and time.ticks_diff(now, self.next_frame) < 0:
+        if not force and (time.ticks_diff(now, self.next_frame) < 0 or not self.sys.screen_on):
             return False
         self.next_frame = time.ticks_add(now, 100)
         frame = list(self.leds.frame) if self.leds else None

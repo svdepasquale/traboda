@@ -242,9 +242,20 @@ def _icon(name):
 
 
 def _scan(folder):
-    """[(name, is_dir, size)], folders first, then by name. Raises OSError."""
+    """([(name, is_dir, size)] folders first, then by name; how many names were skipped).
+    The badge's FAT keeps names in code page 437, so an accented name written by a
+    computer is not UTF-8 and cannot become a str. Raises OSError."""
     out = []
-    for e in os.ilistdir(folder):
+    bad = 0
+    it = os.ilistdir(folder)
+    while True:
+        try:
+            e = next(it)
+        except StopIteration:
+            break
+        except ValueError:                      # UnicodeError; the listing goes on
+            bad += 1
+            continue
         is_dir = e[1] == 0x4000
         size = e[3] if len(e) > 3 else 0
         if len(e) < 4 and not is_dir:           # the unix port lists no sizes
@@ -254,7 +265,7 @@ def _scan(folder):
                 pass
         out.append((e[0], is_dir, size))
     out.sort(key=lambda e: (not e[1], e[0].lower()))
-    return out
+    return out, bad
 
 
 def _text(data):
@@ -309,24 +320,30 @@ async def _listing(nav, vols, folder, focus, at, up):
     """One folder. Returns (tag, row) for the row picked (or ("up",) for back), or None."""
     sys = nav.sys
     note = None
+    bad = 0
     try:
-        entries = _scan(folder)
+        entries, bad = _scan(folder)
     except OSError as e:
         entries = []
-        note = "Cartella non leggibile (%s)" % _why(e)
+        note = "Cartella non leggibile: %s" % _why(e)
     if len(vols) > 1:                       # the card's mount point has its own row
         entries = [e for e in entries if _join(folder, e[0]) != vols[1][1]]
     items = _items(entries, up)
     if not entries and note is None:
-        note = "Cartella vuota"
-    sel = min(at, len(items) - 1) if at else 1 if up and entries else 0
+        note = "Nomi illeggibili: togli gli accenti" if bad else "Cartella vuota"
+    sel = max(0, min(at, len(items) - 1)) if at else 1 if up and entries else 0
     for i, it in enumerate(items):
         if focus is not None and it.tag[0] != "up" and it.tag[1] == focus:
             sel = i
     free = _free(folder)
     dirs = sum(1 for e in entries if e[1])
-    summary = "%d %s · %d file" % (dirs, "cartella" if dirs == 1 else "cartelle",
-                                   len(entries) - dirs) if entries else ""
+    counts = []
+    if entries:
+        counts.append("%d %s · %d file" % (dirs, "cartella" if dirs == 1 else "cartelle",
+                                           len(entries) - dirs))
+    if bad:
+        counts.append("%d %s" % (bad, "illeggibile" if bad == 1 else "illeggibili"))
+    summary = " · ".join(counts)
     hints = [("A", "Apri"), ("◄", "Su"), ("A tieni", "Indietro")] if up else \
         [("A", "Apri"), ("A tieni", "Esci")]
     top = 0
@@ -346,7 +363,8 @@ async def _listing(nav, vols, folder, focus, at, up):
             ui.footer(hints)
         ui.draw_list(items, sel, top, LIST_Y, ROWS)
         if note:
-            gfx.text(note, 160, LIST_Y + ui.ROW_H * len(items) + 6, ui.DIM, align=1)
+            for i, line in enumerate(gfx.wrap(note, 296)[:2]):
+                gfx.text(line, 160, LIST_Y + ui.ROW_H * len(items) + 6 + 18 * i, ui.DIM, align=1)
         if full:
             sys.show()
             full = False
@@ -426,13 +444,19 @@ async def _delete(nav, path, name):
     if critical and await ui.dialog(nav, "Elimini " + name + "?", CRITICAL[name],
                                     ("Annulla", "Elimina"), accent=ui.RED) != 1:
         return
-    if sys.player.current == path:
-        sys.player.stop()
+    p = sys.player
+    cur = p.current
+    if cur == path:
+        p.stop()
+        await sys.sleep_ms(50)              # the cancelled playback task closes the file
     try:
         os.remove(path)
     except OSError as e:
         await ui.dialog(nav, "Elimina", "Impossibile eliminare: %s." % _why(e))
         return
+    if path in p.queue:                     # or the queue stops at the missing track
+        p.queue = [t for t in p.queue if t != path]
+        p.index = p.queue.index(cur) if cur in p.queue else -1
     if critical and name == "settings.json":
         settings.load()                     # or the next save writes the old values back
 
@@ -571,10 +595,10 @@ async def _hex(nav, path, name, size):
 def _modified(path):
     try:
         mtime = os.stat(path)[8]
-    except OSError:
+        t = time.gmtime(mtime + tz.offset_minutes(mtime) * 60)
+    except (OSError, OverflowError, ValueError):    # a FAT date before the 2000 epoch
         return None
-    t = time.gmtime(mtime + tz.offset_minutes(mtime) * 60)
-    if t[0] < 2025:                          # written before the clock was set
+    if not 2025 <= t[0] < 2100:             # written before the clock was set
         return None
     return "%d %s %d, %02d:%02d" % (t[2], tz.MONTHS[t[1] - 1], t[0], t[3], t[4])
 
@@ -590,7 +614,7 @@ def _kind(path, name):
                 return ("Audio WAV, %d:%02d" % (secs // 60, secs % 60),
                         "%d Hz · %s · %d bit" % (rate, "stereo" if channels == 2 else "mono", bits))
             head = f.read(1024)
-    except ValueError:
+    except (ValueError, MemoryError):       # MemoryError: a broken chunk size
         return "WAV non valido", None
     except OSError as e:
         return "Non leggibile (%s)" % _why(e), None
@@ -615,16 +639,18 @@ async def _info(nav, vols, path, name, size):
     while True:
         if full:
             ui.header(sys, title, _icon(name))
-            y = 58
+            y = 54
             for label, value in rows:
-                gfx.text(label, 12, y, ui.DIM)
-                lines = gfx.wrap(value, 196)
+                lines = gfx.wrap(value, 208)
                 if len(lines) > 2:
-                    lines = [lines[0], gfx.ellipsize(lines[1] + "…", 196)]
+                    lines = [lines[0], gfx.ellipsize(lines[1] + "…", 208)]
+                if y + 16 * len(lines) > ui.FOOTER_Y - 2:
+                    break
+                gfx.text(label, 12, y, ui.DIM)
                 for line in lines:
-                    gfx.text(line, 112, y, ui.TEXT)
+                    gfx.text(line, 104, y, ui.TEXT)
                     y += 16
-                y += 6
+                y += 3
             ui.footer([("A tieni", "Indietro")])
             sys.show()
             full = False
@@ -641,7 +667,10 @@ async def _info(nav, vols, path, name, size):
 # -- entry ---------------------------------------------------------------------------------
 
 async def main(sys):
-    sys.mount_sd()
+    try:
+        sys.mount_sd()
+    except OSError:
+        pass
     nav = _Nav(sys)
     vols = [("Memoria interna", _root(paths.ROOT), "f_chip")]
     if sys.sd_mounted:

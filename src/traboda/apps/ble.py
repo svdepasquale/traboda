@@ -511,6 +511,20 @@ def _scan_detail(d, now):
              12, DETAIL_Y + 18, ui.DIM, "small")
 
 
+def _ranked(now):
+    """Scanner rows: strongest first, the ones gone quiet (dimmed) below the live ones."""
+    live, quiet = [], []
+    for d in _devs.values():
+        age = time.ticks_diff(now, d.last)
+        if age < STALE_MS:
+            live.append(d)
+        elif age <= FORGET_MS:
+            quiet.append(d)
+    live.sort(key=_by_rssi, reverse=True)
+    quiet.sort(key=_by_rssi, reverse=True)
+    return live + quiet
+
+
 def _scan_list(view, now, failed):
     gfx.fill_rect(0, LIST_Y, W, SCAN_ROWS * ui.ROW_H, ui.BG)
     if not view.items:
@@ -536,9 +550,7 @@ async def _scanner(sys, radio):
             if time.ticks_diff(now, due) >= 0:
                 # nobody reads a dark screen: the radio rests until a key wakes it
                 _refresh(radio, now, pause=not sys.screen_on)
-                fresh = [d for d in _devs.values() if time.ticks_diff(now, d.last) <= FORGET_MS]
-                fresh.sort(key=_by_rssi, reverse=True)
-                view.update(fresh, now)
+                view.update(_ranked(now), now)
                 live = not live
                 due = time.ticks_add(now, 1000)
                 dirty = True
@@ -644,20 +656,20 @@ async def _find(sys, radio, addr):
             lost = d is None or time.ticks_diff(now, d.last) > LOST_MS
             r = round(ema)
             p = 0.0 if lost else _prox(r)
-            # a playing or paused track owns the codec: a tick would reconfigure it
-            music = sys.audio.playing
+            lit = 0 if lost else max(1, int(p * 11 + 0.5))
             if not lost:
                 sys.buttons.last_activity = now     # a finder in use is watched: screen on
                 if time.ticks_diff(now, beep) >= 0:
-                    if _sound and not music:
+                    if _sound:
                         try:
-                            sys.audio.tone(600 + int(1400 * p), 14, 0.3)
+                            # one pitch per meter step, so audio keeps each tick's PCM cached
+                            sys.audio.tone(460 + 140 * lit, 14, 0.3)
                         except Exception:  # noqa: BLE001 - a beep never stops the finder
                             pass
                     flash = time.ticks_add(now, 60)
                     gap = 60 + int(1000 * (1 - p) * (1 - p))
                     beep = time.ticks_add(now, int(gap * (0.6 + 0.8 * random.random())))
-            state = (0 if lost else max(1, int(p * 11 + 0.5)), time.ticks_diff(flash, now) > 0)
+            state = (lit, time.ticks_diff(flash, now) > 0)
             if state != leds:
                 leds = state
                 _heat_leds(sys, state[0], state[1])
@@ -671,6 +683,8 @@ async def _find(sys, radio, addr):
                     _find_head(sys, d, addr)
                     bar = _bar_key(sys)
                     shown = [None] * 4
+                # a playing track skips tone() (there is no mixer): say why it is silent
+                music = sys.audio.playing and not sys.audio.paused
                 note = "muto" if not _sound else "musica" if music else "♪"
                 bands = _find_body(d, addr, r, lost, hist, now, note, shown)
                 if full:

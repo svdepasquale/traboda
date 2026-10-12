@@ -164,7 +164,7 @@ def _error(e):
 
 def _leds(sys, here=True):
     """The LEDs are a VU meter while the tape rolls here (if LED VU is on), otherwise
-    the user's effect: call on every playback change, and with here=False on leaving."""
+    the user's effect. Cheap: the loops call it every round, with here=False on leaving."""
     leds = sys.leds
     if not leds:
         return
@@ -397,6 +397,7 @@ async def _library(sys, lib):
         while True:
             ev = await sys.event(timeout_ms=500)
             await _advance(sys)
+            _leds(sys)
             now = (p.index, a.playing, a.paused)
             if now != seen or (ev is None and time.time() // 60 != minute):
                 minute = time.time() // 60
@@ -405,7 +406,6 @@ async def _library(sys, lib):
                 if now != seen:
                     seen = now
                     _mark(sys, lib, items)
-                    _leds(sys)
                     break
             if ev is not None:
                 break
@@ -557,7 +557,6 @@ class _Deck:
         self.sig = self.state()
         self.minute = time.time() // 60
         sys.show()
-        _leds(sys)
 
     def draw_window(self):
         pct = self.pct()
@@ -716,6 +715,7 @@ class _Deck:
             self.draw()
             while True:
                 await _advance(sys)
+                _leds(sys)
                 a = sys.audio
                 wait = FRAME_MS             # a stream that starts or stops shows up quickly
                 if a.playing and not a.paused:

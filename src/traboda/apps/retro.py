@@ -24,13 +24,43 @@ TAB_Y = 50
 BODY_Y = 78
 
 
+class _Nav:
+    """The System as the widgets see it, noting HOME so that a dialog's caller leaves too."""
+
+    def __init__(self, sys):
+        self.sys = sys
+        self.home = False
+
+    def __getattr__(self, name):
+        return getattr(self.sys, name)
+
+    async def event(self, timeout_ms=None):
+        ev = await self.sys.event(timeout_ms)
+        if ev is not None and B.kind(ev) == self.sys.HOME:
+            self.home = True
+        return ev
+
+
 def _installed():
-    """Labels of the app partitions on this badge."""
+    """Labels of the app partitions holding a firmware image (it starts with 0xE9): the
+    partition table lists Retro-Go's three on every badge, flashed or erased."""
     try:
         import esp32
-        return [p.info()[4] for p in esp32.Partition.find(esp32.Partition.TYPE_APP)]
+        found = esp32.Partition.find(esp32.Partition.TYPE_APP)
     except (ImportError, OSError):
         return []
+    out = []
+    head = bytearray(4)
+    for p in found:
+        try:
+            p.readblocks(0, head)
+        except AttributeError:              # the simulator's partitions hold no data
+            head[0] = 0xE9
+        except OSError:
+            continue
+        if head[0] == 0xE9:
+            out.append(p.info()[4])
+    return out
 
 
 def _sd_present(sys):
@@ -115,20 +145,24 @@ def _restore_leds(sys):
         sys.leds.set_effect(settings.get("led_effect") if settings.get("leds_on") else "off")
 
 
-async def _launch(sys, parts):
+async def _launch(nav, parts):
     """Confirms, then reboots into Retro-Go. Returns True when the app should leave."""
+    sys = nav.sys
     if "launcher" not in parts:
-        await ui.dialog(sys, TITLE, "Retro-Go non è installato su questo badge: manca la "
-                                    "partizione «launcher».")
-        return False
+        await ui.dialog(nav, TITLE, "Retro-Go non è installato su questo badge: la "
+                                    "partizione «launcher» è vuota o manca.")
+        return nav.home
     msg = "Il badge si riavvia in Retro-Go. Per tornare a Traboda: «Esci» o reset nel suo menu."
-    if await ui.dialog(sys, "Avvia Retro-Go", msg, ("Annulla", "Avvia")) != 1:
-        return False
+    if await ui.dialog(nav, "Avvia Retro-Go", msg, ("Annulla", "Avvia")) != 1:
+        return nav.home
     import esp32
     import machine
-    settings.save()
     sys.audio.stop()
-    sys.audio.close()
+    try:
+        settings.save()
+        sys.audio.close()
+    except OSError:
+        pass                                # the reboot goes ahead all the same
     if sys.leds:
         sys.leds.off(now=True)
     gfx.clear(ui.BG)
@@ -143,9 +177,9 @@ async def _launch(sys, parts):
         pass
     except Exception as e:  # noqa: BLE001 - set_boot refuses an image that does not verify
         _restore_leds(sys)
-        await ui.dialog(sys, TITLE, "La partizione «launcher» non contiene un firmware "
+        await ui.dialog(nav, TITLE, "La partizione «launcher» non contiene un firmware "
                                     "avviabile (%s)." % e)
-        return False
+        return nav.home
     _restore_leds(sys)
     return True
 
@@ -180,7 +214,7 @@ async def main(sys):
             if sys.is_back(ev):
                 return
             if k == B.A and kind == B.CLICK:
-                if await _launch(sys, parts):
+                if await _launch(_Nav(sys), parts):
                     return
                 full = True
                 break

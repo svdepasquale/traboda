@@ -51,7 +51,7 @@ _FILL = tuple(rgb(*c) for c, _ in _TILES)
 _INK = tuple(ui.BG if dark else ui.WHITE for _, dark in _TILES)
 _EMPTY = rgb(34, 40, 68)
 _OFF = (0, 0, 0)
-GOLD = [(255, 214, 10)] * 22
+_GOLD = [(255, 214, 10)] * 22
 
 
 def slide(cells, lines, motion=None, merged=None):
@@ -288,7 +288,7 @@ class Game:
             if not self.won and max(self.cells) >= WIN:
                 self.won = True
                 common.sfx(sys, "win")
-                common.leds_frame(sys, GOLD)
+                common.leds_frame(sys, _GOLD)
                 _skip_events(sys)
                 choice = await ui.dialog(sys, "2048!", "Punti: %d\nContinui per un record?" % self.score,
                                          ("Continua", "Basta"), accent=ui.YELLOW)

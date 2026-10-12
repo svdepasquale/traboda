@@ -1,5 +1,6 @@
 """Companion: the Mac's CPU, memory, battery and music, pushed over USB by
-tools/companion.py (see sys.hostlink). While it is open the LEDs fill with the CPU load."""
+tools/companion.py (see sys.hostlink). While it is open the LEDs fill with the CPU load,
+and the screen stays on as long as the Mac keeps sending."""
 
 import time
 from array import array
@@ -174,7 +175,7 @@ def _update(s, hist, count, seq, shown):
     """Redraws the values that changed; returns the bands to push."""
     bands = []
     parts = (
-        ("head", (_str(s.get("host")), _str(s.get("time"))), _draw_head, (18, 46)),
+        ("head", (_str(s.get("host")), _str(s.get("time"))[:5]), _draw_head, (18, 46)),
         ("cpu", (_pct(s.get("cpu")), seq), None, (54, 128)),
         ("ram", (_pct(s.get("ram")),), _draw_ram, (134, 174)),
         ("batt", (_pct(s.get("batt")), bool(s.get("charging")), bool(s.get("ac"))), _draw_batt,
@@ -237,6 +238,9 @@ async def main(sys):
                 count = min(SAMPLES, count + 1)
                 seq += 1
                 _leds_cpu(sys, cpu)
+                if mode != "data" and not sys.screen_on:
+                    sys.wake_screen()               # the Mac has just connected
+                sys.buttons.last_activity = time.ticks_ms()     # a live dashboard stays lit
             full = mode != ("data" if fresh else "wait")
             if full:
                 mode = "data" if fresh else "wait"
@@ -249,7 +253,7 @@ async def main(sys):
             if fresh:
                 bands = _update(s, hist, count, seq, shown)
             else:
-                age_s = age // 1000 if isinstance(s, dict) else None
+                age_s = max(0, age) // 1000 if isinstance(s, dict) else None
                 bands = [] if shown.get("age") == age_s else [(202, 216)]
                 shown["age"] = age_s
                 if bands or full:
