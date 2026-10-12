@@ -119,7 +119,6 @@ def standby(display=None, leds=None, audio=None):
         time.sleep_ms(20)
     _ex.inputs()
     Pin(board.EXPANDER_INT, Pin.IN, Pin.PULL_UP, hold=True)
-    esp32.gpio_deep_sleep_hold(True)
     esp32.wake_on_ext0(Pin(board.EXPANDER_INT), esp32.WAKEUP_ALL_LOW)
     esp32.wake_on_ext1((Pin(board.BUTTON_PREV),), esp32.WAKEUP_ALL_LOW)
     machine.deepsleep()
