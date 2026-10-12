@@ -1,0 +1,46 @@
+diff --git a/ports/esp32/machine_i2s.c b/ports/esp32/machine_i2s.c
+index 27b70f1..0efc3d8 100644
+--- a/ports/esp32/machine_i2s.c
++++ b/ports/esp32/machine_i2s.c
+@@ -74,6 +74,9 @@ typedef struct _machine_i2s_obj_t {
+     mp_hal_pin_obj_t sck;
+     mp_hal_pin_obj_t ws;
+     mp_hal_pin_obj_t sd;
++    #if MICROPY_PY_MACHINE_I2S_MCK
++    mp_hal_pin_obj_t mck;
++    #endif
+     i2s_dir_t mode;
+     i2s_data_bit_width_t bits;
+     format_t format;
+@@ -309,6 +312,9 @@ static void mp_machine_i2s_init_helper(machine_i2s_obj_t *self, mp_arg_val_t *ar
+     int8_t sck = args[ARG_sck].u_obj == MP_OBJ_NULL ? -1 : machine_pin_get_id(args[ARG_sck].u_obj);
+     int8_t ws = args[ARG_ws].u_obj == MP_OBJ_NULL ? -1 : machine_pin_get_id(args[ARG_ws].u_obj);
+     int8_t sd = args[ARG_sd].u_obj == MP_OBJ_NULL ? -1 : machine_pin_get_id(args[ARG_sd].u_obj);
++    #if MICROPY_PY_MACHINE_I2S_MCK
++    int8_t mck = args[ARG_mck].u_obj == mp_const_none ? -1 : machine_pin_get_id(args[ARG_mck].u_obj);
++    #endif
+ 
+     // is Mode valid?
+     int8_t mode = args[ARG_mode].u_int;
+@@ -340,6 +346,9 @@ static void mp_machine_i2s_init_helper(machine_i2s_obj_t *self, mp_arg_val_t *ar
+     self->sck = sck;
+     self->ws = ws;
+     self->sd = sd;
++    #if MICROPY_PY_MACHINE_I2S_MCK
++    self->mck = mck;
++    #endif
+     self->mode = mode;
+     self->bits = bits;
+     self->format = format;
+@@ -375,7 +384,11 @@ static void mp_machine_i2s_init_helper(machine_i2s_obj_t *self, mp_arg_val_t *ar
+         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(self->rate),
+         .slot_cfg = slot_cfg,
+         .gpio_cfg = {
++            #if MICROPY_PY_MACHINE_I2S_MCK
++            .mclk = self->mck < 0 ? I2S_GPIO_UNUSED : self->mck,
++            #else
+             .mclk = I2S_GPIO_UNUSED,
++            #endif
+             .bclk = self->sck,
+             .ws = self->ws,
+             .invert_flags = {

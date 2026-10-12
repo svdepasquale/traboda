@@ -1,0 +1,9 @@
+firmware/.build/
+firmware/dist/
+__pycache__/
+*.pyc
+.DS_Store
+config.local.json
+secrets*.json
+*.bin
+/sim/out/

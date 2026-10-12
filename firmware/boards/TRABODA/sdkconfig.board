@@ -1,0 +1,23 @@
+# Flash: 16 MiB, quad I/O at 80 MHz (the eFuse reports quad).
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+
+# Keeps Retro-Go's partitions where the stock firmware put them; build.sh copies
+# boards/TRABODA/partitions.csv to this name inside ports/esp32.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-traboda.csv"
+
+# Octal PSRAM, 8 MiB, embedded in the ESP32-S3R8.
+CONFIG_SPIRAM_SPEED_80M=y
+
+# Retro-Go selects its partitions with esp_ota_set_boot_partition() and never marks
+# itself valid: with rollback on, the bootloader would bounce it back after one boot.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=n
+
+# The IDF console keeps its defaults (UART0 + USB-Serial-JTAG secondary), as on the
+# ESP32-C3 boards: GPIO43 is later claimed by I2S, which disconnects UART0 TX from it.
+
+CONFIG_LWIP_LOCAL_HOSTNAME="traboda"

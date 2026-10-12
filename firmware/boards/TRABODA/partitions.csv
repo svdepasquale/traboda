@@ -1,0 +1,15 @@
+# Traboda partition table, 16 MiB flash.
+# nvs .. otadata sit at the offsets the stock RomHack firmware used, so Retro-Go's three
+# apps survive a Traboda flash untouched and Traboda takes the factory slot.
+# "data" is Retro-Go's own FAT fallback (it formats it when no SD card is present):
+# Traboda's LittleFS must never live under that label.
+# Name,     Type, SubType, Offset,   Size
+nvs,        data, nvs,     0x9000,   0x6000,
+phy_init,   data, phy,     0xf000,   0x1000,
+factory,    app,  factory, 0x10000,  0x400000,
+launcher,   app,  ota_0,   0x410000, 0x120000,
+retro-core, app,  ota_1,   0x530000, 0x120000,
+prboom-go,  app,  ota_2,   0x650000, 0xf0000,
+otadata,    data, ota,     0x740000, 0x2000,
+data,       data, fat,     0x742000, 0x200000,
+vfs,        data, fat,     0x942000, 0x6be000,
