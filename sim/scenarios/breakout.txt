@@ -1,0 +1,8 @@
+# Serve screen, paddle nudges, launch, a little play.
+wait:400,snap:serve,key:left,key:left,key:A,wait:600,snap:play,key:right,wait:900,snap:play2
+# Pause while serving, then while playing (countdown on resume), then Esci.
+wait:300,key:play,wait:300,snap:pause,key:A,wait:300,key:A,wait:500,key:play,wait:300,key:A,wait:1600,snap:resumed,key:play,key:right,key:right,key:A,wait:500,snap:hub
+# Three balls lost with the paddle still: game-over dialog, Esci.
+wait:300,key:A,wait:3000,key:A,wait:3000,key:A,wait:3500,snap:gameover,key:right,key:A,wait:500,snap:hub
+# A tap on B pauses; B held leaves for the games list.
+wait:300,key:B,wait:300,snap:pause_b,key:A,wait:300,hold:B,wait:500,snap:home_b

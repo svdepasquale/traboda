@@ -1,0 +1,8 @@
+# The name tag, then the scrolling line once the hints go away.
+wait:700,snap:tag,wait:4500,snap:scritta
+# The three styles with left/right.
+wait:700,key:right,wait:400,snap:neon,key:right,wait:400,snap:ciao,key:right,wait:400,snap:romhack
+# Edit menu: style and LED toggle, back to the tag, A held leaves (LEDs back to the user's).
+wait:700,key:A,wait:400,snap:modifica,key:down,key:down,key:right,key:down,key:down,key:A,wait:300,snap:cambiato,hold:A,wait:500,snap:tag,hold:A,wait:500,snap:home
+# Tagline on the keyboard: type a letter, OK with play.
+wait:700,key:A,wait:400,key:down,key:A,wait:400,snap:tastiera,key:A,key:play,wait:400,snap:salvato,hold:A,wait:500,snap:tag

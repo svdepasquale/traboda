@@ -49,14 +49,20 @@ _BOLT = (17, 14, 22, 14, 18, 21, 22, 21, 13, 31, 16, 23, 12, 23)    # half units
 
 
 def _wmo(code):
-    for top, kind, text in _WMO:
-        if code <= top:
-            return kind, text
-    return "cloudy", "Nuvoloso"
+    if code is not None:
+        for top, kind, text in _WMO:
+            if code <= top:
+                return kind, text
+    return "cloudy", "--"
 
 
 def _r(v):
     return int(v + 0.5) if v >= 0 else -int(0.5 - v)
+
+
+def _fmt(f, v):
+    """f with v rounded; "--" for the nulls Open-Meteo sends when a value is missing."""
+    return "--" if v is None else f % _r(v)
 
 
 def _weekday(y, m, d):
@@ -183,22 +189,38 @@ def _valid(data):
     try:
         cur, day = data["current"], data["daily"]
         for k in ("temperature_2m", "apparent_temperature", "relative_humidity_2m",
-                  "weather_code", "wind_speed_10m", "time"):
+                  "weather_code", "wind_speed_10m"):
             cur[k]
+        if len(cur["time"]) < 16:
+            return False
         for k in ("time", "weather_code", "temperature_2m_max", "temperature_2m_min",
                   "precipitation_probability_max"):
             if len(day[k]) < 4:
                 return False
+        for d in day["time"][:4]:
+            _weekday(int(d[:4]), int(d[5:7]), int(d[8:10]))
         return True
-    except (KeyError, TypeError):
+    except (KeyError, TypeError, ValueError, IndexError):
         return False
+
+
+def _place():
+    """The saved city, or the default one if the setting is not a usable place."""
+    p = settings.get("weather")
+    try:
+        if p["name"] and -90 <= p["lat"] <= 90 and -180 <= p["lon"] <= 180:
+            return p
+    except (KeyError, TypeError):
+        pass
+    return dict(settings.DEFAULTS["weather"])
 
 
 def _load(place):
     try:
         with open(paths.data("weather.json")) as f:
             c = json.load(f)
-        if c["name"] == place["name"] and _valid(c["data"]):
+        if c["name"] == place["name"] and isinstance(c["ts"], (int, float)) \
+                and _valid(c["data"]):
             return c
     except (OSError, ValueError, KeyError, TypeError):
         pass
@@ -265,32 +287,32 @@ def _day_card(x, y, day, i):
     wd = _weekday(int(date[:4]), int(date[5:7]), dd)
     gfx.text("%s %d" % (tz.DAYS[wd], dd), x + 50, y + 4, ui.TEXT, align=1)
     _glyph(_wmo(day["weather_code"][i])[0], False, x + 6, y + 26, 32, ui.PANEL)
-    hi = "%d°" % _r(day["temperature_2m_max"][i])
-    lo = "%d°" % _r(day["temperature_2m_min"][i])
+    hi = _fmt("%d°", day["temperature_2m_max"][i])
+    lo = _fmt("%d°", day["temperature_2m_min"][i])
     f = "text" if len(hi) + len(lo) <= 6 else "small"
     gfx.text(hi, x + 44, y + 24, ui.TEXT, f)
     gfx.text(lo, x + 96, y + 24, ui.DIM, f, align=-1)
-    p = day["precipitation_probability_max"][i]
     _drop(x + 45, y + 44)
-    gfx.text("%d%%" % p if p is not None else "--", x + 54, y + 45, RAIN, "small")
+    gfx.text(_fmt("%d%%", day["precipitation_probability_max"][i]), x + 54, y + 45, RAIN,
+             "small")
 
 
 def _draw_data(cache):
     cur, day = cache["data"]["current"], cache["data"]["daily"]
     kind, text = _wmo(cur["weather_code"])
-    _glyph(kind, not cur.get("is_day", 1), 10, 56, 64, ui.BG)
-    t = "%d°" % _r(cur["temperature_2m"])
+    _glyph(kind, cur.get("is_day") == 0, 10, 56, 64, ui.BG)
+    t = _fmt("%d°", cur["temperature_2m"])
     if len(t) <= 3:
         gfx.text(t, 84, 54, ui.TEXT, "huge")
     else:
         gfx.text(t, 84, 70, ui.TEXT, "large")
     gfx.text(text, 86, 124, ui.CYAN)
-    gfx.text("↑%d° ↓%d°" % (_r(day["temperature_2m_max"][0]), _r(day["temperature_2m_min"][0])),
-             42, 124, ui.DIM, align=1)
+    gfx.text("↑%s ↓%s" % (_fmt("%d°", day["temperature_2m_max"][0]),
+                          _fmt("%d°", day["temperature_2m_min"][0])), 42, 124, ui.DIM, align=1)
     gfx.vline(198, 60, 84, ui.LINE)
-    rows = (("Percepita", "%d°" % _r(cur["apparent_temperature"])),
-            ("Umidità", "%d%%" % _r(cur["relative_humidity_2m"])),
-            ("Vento", "%d km/h" % _r(cur["wind_speed_10m"])))
+    rows = (("Percepita", _fmt("%d°", cur["apparent_temperature"])),
+            ("Umidità", _fmt("%d%%", cur["relative_humidity_2m"])),
+            ("Vento", _fmt("%d km/h", cur["wind_speed_10m"])))
     for i, (label, value) in enumerate(rows):
         gfx.text(label, 210, 56 + 30 * i, ui.DIM, "small")
         gfx.text(value, 210, 68 + 30 * i, ui.TEXT)
@@ -299,12 +321,14 @@ def _draw_data(cache):
 
 
 def _draw_message(icon_kind, title, lines, color):
-    if icon_kind == "nowifi":
+    if icon_kind in ("wifi", "nowifi"):
         gfx.circle(W // 2, 92, 26, ui.PANEL, True)
         for i, h in enumerate((6, 11, 16, 21)):
-            gfx.fill_rect(W // 2 - 15 + 8 * i, 104 - h, 6, h, ui.LINE)
-        for d in range(3):
-            gfx.line(W // 2 - 18 + d, 74, W // 2 + 16 + d, 110, ui.RED)
+            gfx.fill_rect(W // 2 - 15 + 8 * i, 104 - h, 6, h,
+                          ui.CYAN if icon_kind == "wifi" else ui.LINE)
+        if icon_kind == "nowifi":
+            for d in range(3):
+                gfx.line(W // 2 - 18 + d, 74, W // 2 + 16 + d, 110, ui.RED)
     else:
         _glyph(icon_kind, False, W // 2 - 32, 60, 64, ui.BG)
     gfx.text(title, W // 2, 132, color, "title", align=1)
@@ -316,24 +340,73 @@ def _draw(sys, place, cache, err):
     _header(sys, place, cache)
     if cache:
         _draw_data(cache)
-        ui.footer([("A", "Aggiorna"), ("▼", "Città"), ("A tieni", "Indietro")])
-    elif not net.connected():
+        ui.footer([("A", "Aggiorna" if net.connected() else "Wi-Fi"), ("▼", "Città"),
+                   ("A tieni", "Indietro")])
+    elif net.connected() and not err:
+        _draw_message("partly", "Scarico le previsioni…", [place["name"]], ui.TEXT)
+        ui.footer([])
+    elif net.connected():
+        _draw_message("cloudy", "Meteo non disponibile", gfx.wrap(err, 296), ui.ORANGE)
+        ui.footer([("A", "Riprova"), ("▼", "Città"), ("A tieni", "Indietro")])
+    elif net.status in ("scanning", "connecting"):
+        _draw_message("wifi", "Connessione Wi-Fi…",
+                      [gfx.ellipsize((net.ssid or "") if net.status == "connecting" else
+                                     "ricerca delle reti salvate", 296)], ui.TEXT)
+        ui.footer([("A", "Wi-Fi"), ("▼", "Città"), ("A tieni", "Indietro")])
+    else:
         _draw_message("nowifi", "Serve il Wi-Fi",
                       gfx.wrap("Collegati a una rete per scaricare le previsioni di %s."
                                % place["name"], 296), ui.TEXT)
         ui.footer([("A", "Apri Wi-Fi"), ("▼", "Città"), ("A tieni", "Indietro")])
-    elif err:
-        _draw_message("cloudy", "Previsioni non disponibili", gfx.wrap(err, 296), ui.ORANGE)
-        ui.footer([("A", "Riprova"), ("▼", "Città"), ("A tieni", "Indietro")])
-    else:
-        _draw_message("partly", "Scarico le previsioni…", [place["name"]], ui.TEXT)
-        ui.footer([])
 
 
-async def _pick_city(sys, place):
+class _Nav:
+    """The System as the ui widgets see it, noting HOME so that nested screens all leave."""
+
+    def __init__(self, sys):
+        self.sys = sys
+        self.home = False
+
+    def __getattr__(self, name):
+        return getattr(self.sys, name)
+
+    async def event(self, timeout_ms=None):
+        ev = await self.sys.event(timeout_ms)
+        if ev is not None and B.kind(ev) == self.sys.HOME:
+            self.home = True
+        return ev
+
+
+async def _toast(nav, msg, ms):
+    """ui.toast, but the key that cuts it short is used up to its release instead of also
+    acting on the screen underneath."""
+    ui.toast_draw(msg)
+    nav.show()
+    if not await nav.sleep_ms(ms, interruptible=True):
+        return
+    k = None
+    held = False
+    while True:
+        ev = await nav.event(timeout_ms=1000)
+        if ev is None or B.kind(ev) == nav.HOME:
+            return
+        kind = B.kind(ev)
+        if kind == nav.REDRAW:
+            continue
+        if k is None:
+            if kind == B.PRESS:
+                k = B.key(ev)
+        elif B.key(ev) == k:
+            if kind == B.LONG:
+                held = True
+            elif kind == B.CLICK or (kind == B.RELEASE and held):
+                return
+
+
+async def _pick_city(nav, place):
     names = [c[0] for c in CITIES]
     items = [ui.Item(n, "✓" if n == place["name"] else None, tag=i) for i, n in enumerate(names)]
-    it = await ui.menu(sys, "Città", items, icon=ICON,
+    it = await ui.menu(nav, "Città", items, icon=ICON,
                        sel=names.index(place["name"]) if place["name"] in names else 0,
                        hints=[("A", "Scegli"), ("A tieni", "Indietro")])
     if it is None:
@@ -342,8 +415,14 @@ async def _pick_city(sys, place):
     return {"name": name, "lat": lat, "lon": lon}
 
 
+def _state(sys):
+    """What the screen shows besides the forecast: redraw when it changes."""
+    return net.connected(), net.status, sys.clock_text()
+
+
 async def main(sys):
-    place = settings.get("weather")
+    nav = _Nav(sys)
+    place = _place()
     cache = _load(place)
     err = None
     tried = None            # ticks of the last fetch attempt, to pace retries
@@ -352,14 +431,15 @@ async def main(sys):
     note = None
     seen = None
     while True:
-        due = force or cache is None or _age(cache) is None or _age(cache) > STALE_S
+        age = _age(cache) if cache else None
+        due = force or age is None or age > STALE_S
         if net.connected() and due and (force or tried is None or
                                         time.ticks_diff(time.ticks_ms(), tried) > RETRY_MS):
             force = False
-            _draw(sys, place, cache, None)
+            _draw(nav, place, cache, None)
             if cache:
                 ui.toast_draw("Aggiornamento…")
-            sys.show()
+            nav.show()
             fresh, err = _fetch(place)
             tried = time.ticks_ms()
             if fresh:
@@ -368,28 +448,32 @@ async def main(sys):
                 note = "Aggiornamento non riuscito: restano i dati vecchi"
             full = True
         if full:
-            _draw(sys, place, cache, err)
-            sys.show()
+            _draw(nav, place, cache, err)
+            nav.show()
             full = False
-            seen = (net.connected(), sys.clock_text())
+            seen = _state(nav)
         if note:
-            await ui.toast(sys, note, 1800)
+            await _toast(nav, note, 1800)
             note = None
             full = True
+            if nav.home:
+                return
             continue
-        ev = await sys.event(timeout_ms=1000)
+        ev = await nav.event(timeout_ms=1000)
         if ev is None:
-            if (net.connected(), sys.clock_text()) != seen:
+            if _state(nav) != seen:
                 full = True
             continue
         k, kind = B.key(ev), B.kind(ev)
-        if kind == sys.REDRAW:
+        if kind == nav.REDRAW:
             full = True
             continue
-        if sys.is_back(ev):
+        if nav.is_back(ev):
             return
         if kind == B.PRESS and k in (B.DOWN, B.RIGHT):
-            new = await _pick_city(sys, place)
+            new = await _pick_city(nav, place)
+            if nav.home:
+                return
             if new and new["name"] != place["name"]:
                 place = new
                 settings.set("weather", place)
@@ -400,8 +484,5 @@ async def main(sys):
             if net.connected():
                 force = True
                 continue
-            if not cache or await ui.dialog(sys, "Meteo", "Non sei connesso al Wi-Fi.",
-                                            ("Apri Wi-Fi", "Annulla")) == 0:
-                sys.request_app("wifi")
-                return
-            full = True
+            nav.request_app("wifi")
+            return

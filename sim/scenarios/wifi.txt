@@ -1,0 +1,14 @@
+# Root, scan list, move down, Canali tab (one flip even with right held), back to the root.
+wait:800,snap:root,key:A,wait:900,snap:reti,key:down,wait:200,down:right,wait:900,up:right,wait:200,snap:canali,hold:A,wait:400,snap:root2
+# Join the open network: progress, connected screen, then the root with Disconnetti.
+wait:800,key:A,wait:900,key:down,key:down,key:A,wait:300,snap:connessione,wait:900,snap:connesso,wait:1600,snap:root_connesso
+# Secure network: an empty password is refused, then OK on a typed one joins it.
+wait:800,key:A,wait:900,key:A,wait:400,key:play,wait:300,snap:serve_password,wait:1500,key:A,key:play,wait:1200,snap:connesso
+# Saved networks after joining: list, options of the current one, forget it, empty-list dialog.
+wait:800,key:A,wait:900,key:down,key:down,key:A,wait:2700,key:down,key:A,wait:400,snap:salvate,key:A,wait:300,snap:opzioni,key:A,wait:400,snap:vuota
+# Disconnect after joining: auto-connect warning, then the toast (A on it must not act below).
+wait:800,key:A,wait:900,key:down,key:down,key:A,wait:2700,key:up,key:A,wait:400,snap:avviso,key:A,wait:300,snap:toast,key:A,wait:600,snap:root
+# Not connected: Sincronizza ora asks for Wi-Fi; auto-connect toggled off with right.
+wait:800,key:up,key:A,wait:400,snap:serve_wifi,key:A,wait:300,key:up,key:right,wait:300,snap:auto_off
+# B held inside the password keyboard goes straight back to the launcher.
+wait:800,key:A,wait:900,key:A,wait:400,hold:B,wait:500,snap:home

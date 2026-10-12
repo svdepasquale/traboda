@@ -1,0 +1,6 @@
+# Intro, countdown, the red wait; a press before green is a false start.
+wait:500,snap:intro,key:A,wait:300,snap:conto,wait:1500,snap:attesa,key:A,wait:300,snap:falsa
+# No press at all: green, then "too slow" after 5 s; pause and Esci.
+wait:500,key:A,wait:6800,snap:verde_o_lento,wait:5000,snap:lento,key:play,wait:300,snap:pausa,key:left,key:A,wait:500,snap:giochi
+# A held on the intro goes back to the games list.
+wait:500,hold:A,wait:500,snap:giochi

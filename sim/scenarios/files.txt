@@ -1,0 +1,10 @@
+# Internal memory root, into sd/music (sizes, counts), back up with left twice.
+wait:800,snap:root,key:A,wait:300,key:A,wait:300,snap:music,key:left,wait:300,snap:sd,key:left,wait:300,snap:root_back
+# A WAV: actions menu, play it (toast, note in the status bar), then its details.
+wait:800,key:A,wait:300,key:A,wait:300,key:A,wait:300,snap:actions,key:A,wait:700,snap:playing,key:A,wait:300,key:down,key:down,key:A,wait:400,snap:info
+# Hex view of a WAV: scroll a row, a page, then HOME (B held) goes to the launcher.
+wait:800,key:A,wait:300,key:A,wait:300,key:A,wait:300,key:down,key:A,wait:400,snap:hex,key:down,key:right,wait:200,snap:hex_page,hold:B,wait:500,snap:home
+# Delete a WAV: cancel at the confirm, then delete it; two tracks are left.
+wait:800,key:A,wait:300,key:A,wait:300,key:A,wait:300,key:up,key:A,wait:300,snap:confirm,key:A,wait:300,key:A,wait:300,key:up,key:A,wait:300,key:right,key:A,wait:400,snap:deleted
+# Out level by level with A held, then out of the app.
+wait:800,key:A,wait:300,key:A,wait:300,hold:A,wait:300,hold:A,wait:300,snap:root,hold:A,wait:500,snap:launcher

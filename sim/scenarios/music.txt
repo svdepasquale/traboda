@@ -1,0 +1,10 @@
+# Library, play the first track, deck: pause, resume, volume up, back to the list, exit.
+app:music,wait:800,snap:lib,key:A,wait:300,snap:deck,key:A,wait:200,snap:pause,key:A,key:up,wait:200,snap:vol,hold:A,wait:400,snap:list,hold:A,wait:400,snap:home
+# Seek by holding right (expander path), skip back with left, HOME (B held) from the deck.
+app:music,wait:800,key:A,wait:300,down:right,wait:700,up:right,wait:200,snap:seek,key:left,wait:300,snap:skip,hold:B,wait:500,snap:home
+# List toggles: shuffle with right, repeat and LED VU with A; play from the list, back, exit.
+app:music,wait:800,key:up,key:up,key:up,key:right,key:down,key:A,key:down,key:A,wait:200,snap:toggles,key:down,key:A,wait:300,snap:deck,hold:A,wait:400,hold:A,wait:400,snap:home
+# Re-entering the Walkman while a track plays opens the deck directly; HOME from the list.
+app:music,wait:800,key:A,wait:300,hold:B,wait:500,app:music,wait:600,snap:deck,hold:A,wait:400,snap:list,hold:B,wait:500,snap:home
+# Play key in the list with nothing loaded starts the selected track.
+app:music,wait:800,key:down,key:play,wait:400,snap:deck,hold:A,wait:400,hold:A,wait:400,snap:home

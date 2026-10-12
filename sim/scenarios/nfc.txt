@@ -1,8 +1,11 @@
-# Idle scan screen and the empty archive (real driver: sim SPI reads 0, so no card).
+# smoke.py runs these with no env, so the real driver reads 0 (no card): they exercise
+# the idle screen, the empty archive and back navigation. To drive a card by hand, set
+# TRABODA_NFC_FAKE=ntag215 (or =mclassic) before `micropython sim/run.py` (noted per line).
+# Idle scan screen, then the (empty) archive.
 app:nfc,wait:900,snap:idle,key:A,wait:500,snap:archivio_vuoto
 # Back out of the app to the launcher.
 app:nfc,wait:800,hold:A,wait:500,snap:home
-# NTAG215 result + NDEF (set TRABODA_NFC_FAKE=ntag215) then the actions menu.
+# NTAG215 result + NDEF, then the actions menu (TRABODA_NFC_FAKE=ntag215).
 app:nfc,wait:1000,snap:ntag,key:A,wait:400,snap:azioni
 # NTAG215 save to the archive (TRABODA_NFC_FAKE=ntag215; writes fs/nfc/<uid>.json).
 app:nfc,wait:1000,key:A,wait:400,key:A,wait:700,snap:salvato
@@ -12,5 +15,5 @@ app:nfc,wait:1000,key:A,wait:300,key:down,wait:200,key:A,wait:400,snap:tastiera,
 app:nfc,wait:1000,hold:A,wait:700,snap:idle_debounce
 # MIFARE Classic 1K result: sector grid + block 0 (TRABODA_NFC_FAKE=mclassic).
 app:nfc,wait:1300,snap:mifare
-# Archive with one saved dump: open, view, delete (no env; reuse the save run's out dir).
+# Archive browse (empty under smoke; with a prior save run's fs dir: open, view, delete).
 app:nfc,wait:800,key:A,wait:400,snap:archivio,key:A,wait:400,snap:dettaglio,key:A,wait:300,snap:elimina,key:A,wait:500,snap:vuoto

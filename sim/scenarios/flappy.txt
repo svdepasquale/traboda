@@ -1,0 +1,6 @@
+# Ready screen, flaps on A, up and next until the first pipes are on screen.
+wait:300,snap:ready,key:A,wait:350,key:A,wait:350,key:A,wait:350,key:A,wait:350,key:A,wait:350,key:up,wait:350,key:next,wait:350,snap:flying
+# Pause while flying, resume hovering, flap once and fall: game-over dialog, Esci.
+wait:300,key:A,wait:400,key:play,wait:300,snap:pause,key:A,wait:400,snap:hover,key:A,wait:2500,snap:gameover,key:right,key:A,wait:500,snap:hub
+# A tap on B pauses; B held leaves for the games list.
+wait:300,key:B,wait:300,snap:pause_b,key:A,wait:300,hold:B,wait:500,snap:home_b

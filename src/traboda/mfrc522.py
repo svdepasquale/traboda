@@ -60,10 +60,13 @@ _GET_VERSION = 0x60
 
 
 class MFRC522:
-    def __init__(self, spi, cs_pin, lo=4_000_000, hi=40_000_000):
+    def __init__(self, spi, cs_pin, lo=4_000_000, hi=None):
         self.spi = spi
         self.cs = Pin(cs_pin, Pin.OUT, value=1)
         self._lo = lo
+        if hi is None:
+            from . import board
+            hi = board.DISPLAY_BAUD
         self._hi = hi
         self._a1 = bytearray(1)
         self._a2 = bytearray(2)

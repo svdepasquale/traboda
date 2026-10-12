@@ -21,6 +21,9 @@ MAX_LEVEL = 0.6
 
 EFFECTS = ("off", "solid", "breathe", "rainbow", "wave", "comet", "scanner", "sparkle",
            "fire", "police", "vu")
+EFFECT_NAMES = {"off": "Spento", "solid": "Fisso", "breathe": "Respiro", "rainbow": "Arcobaleno",
+                "wave": "Onda", "comet": "Cometa", "scanner": "Scanner", "sparkle": "Scintille",
+                "fire": "Fuoco", "police": "Polizia", "vu": "VU musica"}
 
 
 def hsv(h, s=1.0, v=1.0):
@@ -84,21 +87,23 @@ class Leds:
             self._progress(self.progress)
         else:
             getattr(self, "_fx_" + self.effect, self._fx_off)(t)
+        frame = self.frame
         if self._flash:
             color, until, period = self._flash
             now = time.ticks_ms()
             if time.ticks_diff(until, now) <= 0:
                 self._flash = None
             elif (now // period) % 2 == 0:
-                self.frame = [color] * N
-        self._write()
+                frame = [color] * N       # shown on top; the effect's own frame survives
+        self._write(frame)
 
-    def _write(self):
+    def _write(self, frame=None):
+        frame = self.frame if frame is None else frame
         scale = self.level * MAX_LEVEL
         lit = False
         np = self.np
         for pos in range(N):
-            r, g, b = self.frame[pos]
+            r, g, b = frame[pos]
             r = int(r * scale)
             g = int(g * scale)
             b = int(b * scale)

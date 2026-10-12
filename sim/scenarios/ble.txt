@@ -1,0 +1,10 @@
+# Root menu, live scanner, second device, finder with Geiger ticks, mute, back to the list and to the root.
+wait:800,snap:root,key:A,wait:1300,snap:scanner,key:down,wait:200,key:A,wait:1000,snap:trova,key:A,wait:300,snap:muto,hold:A,wait:400,snap:lista,hold:A,wait:400,snap:radice
+# Scanner navigation: up from the top wraps to the last device, down twice, back out of the app.
+wait:800,key:A,wait:1300,key:up,wait:200,snap:ultimo,key:down,key:down,wait:200,snap:secondo,hold:A,wait:300,hold:A,wait:500,snap:launcher
+# Badge vicini: advertising card and TRABODA-7 in the list, its finder, back to the list, the root, the launcher.
+wait:800,key:down,key:A,wait:1300,snap:vicini,key:A,wait:900,snap:trova_badge,hold:A,wait:400,hold:A,wait:400,hold:A,wait:500,snap:uscita
+# Info (MAC, radio state, visibility note), back to the root, out of the app.
+wait:800,key:down,key:down,key:A,wait:500,snap:info,hold:A,wait:400,snap:radice,hold:A,wait:500,snap:launcher
+# Quick panel over the finder then REDRAW; B held = back to the list, then HOME through it to the launcher.
+wait:800,key:A,wait:1200,key:A,wait:700,hold:play,wait:400,snap:pannello,hold:A,wait:500,snap:ridisegno,hold:B,wait:800,snap:home

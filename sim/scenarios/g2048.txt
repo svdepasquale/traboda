@@ -1,0 +1,6 @@
+# Moves in all four directions (the slide shows only the rows that changed), pause, resume.
+wait:600,snap:start,key:left,wait:250,key:up,wait:250,key:right,wait:250,key:down,wait:400,snap:moves,key:play,wait:300,snap:pausa,key:A,wait:300,snap:ripresa
+# Fast taps skip the slide; A held opens the pause menu, Esci goes back to the games list.
+wait:600,key:left,key:right,key:left,key:right,wait:500,snap:veloce,hold:A,wait:300,snap:pausa,key:left,key:A,wait:500,snap:giochi
+# Restart from the pause menu: a fresh board.
+wait:600,key:up,wait:300,key:play,wait:300,key:right,key:A,wait:500,snap:nuova

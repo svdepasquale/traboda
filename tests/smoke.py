@@ -74,8 +74,17 @@ def main():
             if steps.startswith("app:"):
                 steps = steps.split(",", 1)[1] if "," in steps else ""
             out = os.path.join(out_root, short.replace("/", "_") + "-%d" % n)
-            r = subprocess.run([args.micropython, os.path.join(ROOT, "sim/run.py"), out, prefix + steps],
-                               capture_output=True, text=True, cwd=ROOT, timeout=300)
+            env = dict(os.environ)
+            while steps.startswith("env:"):          # env steps apply before the app opens
+                head, _, steps = steps.partition(",")
+                key, _, value = head[4:].partition("=")
+                env[key] = value
+            os.makedirs(out, exist_ok=True)
+            step_file = os.path.join(out, "steps.txt")
+            with open(step_file, "w") as f:          # argv >= 256 chars crashes the unix port
+                f.write(prefix + steps)
+            r = subprocess.run([args.micropython, os.path.join(ROOT, "sim/run.py"), out, "@" + step_file],
+                               capture_output=True, text=True, cwd=ROOT, timeout=300, env=env)
             text = r.stdout + r.stderr
             bad = "Traceback" in text or "Errore in" in text or r.returncode != 0
             if bad:

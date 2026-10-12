@@ -70,21 +70,26 @@ async def connect(name, password, timeout_ms=15000):
     return True
 
 
-async def auto_connect():
-    """Tries the saved networks, strongest first. Returns True when connected."""
+async def auto_connect(use_scan=True):
+    """Tries the saved networks (strongest first when use_scan, else most recent first,
+    which avoids the ~2.5 s blocking scan). Returns True when connected."""
     global status
-    saved = {n: p for n, p in settings.get("wifi")}
-    if not saved:
+    nets = settings.get("wifi")
+    if not nets:
         status = "off"
         return False
-    status = "scanning"
-    try:
-        found = scan()
-    except OSError:
-        status = "failed"
-        return False
-    for name, _rssi, _ch, _sec in found:
-        if name in saved and await connect(name, saved[name]):
+    saved = {n: p for n, p in nets}
+    order = [n for n, _p in nets]
+    if use_scan:
+        status = "scanning"
+        try:
+            found = [e[0] for e in scan()]
+        except OSError:
+            status = "failed"
+            return False
+        order = [n for n in found if n in saved]
+    for name in order:
+        if await connect(name, saved[name]):
             return True
     status = "failed"
     return False

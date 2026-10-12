@@ -1,0 +1,3 @@
+# No data from the Mac: the instructions; quick panel (play held) then REDRAW; back. Data state: pipe the Mac
+# tool in, e.g. tools/companion.py --stdout --interval 0.5 | micropython sim/run.py OUT "app:companion,wait:6000,snap:dash"
+wait:1200,snap:waiting,hold:play,wait:500,snap:quick,hold:A,wait:500,snap:redraw,hold:A,wait:500,snap:back

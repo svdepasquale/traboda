@@ -1,0 +1,6 @@
+# The three sections with right and left, wrapping around.
+wait:800,snap:emulatori,key:right,wait:200,snap:rom,key:right,wait:200,snap:tasti,key:right,wait:200,key:left,wait:200,snap:tasti_again
+# Launch: confirm dialog, cancel, then confirm; the simulated reset (SystemExit) is caught and the launcher comes back.
+wait:800,key:A,wait:300,snap:confirm,key:A,wait:300,key:A,wait:300,key:right,key:A,wait:200,snap:booting,wait:800,snap:launcher
+# Back to the launcher with A held.
+wait:800,hold:A,wait:500,snap:back

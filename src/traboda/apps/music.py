@@ -2,13 +2,14 @@
 
 import asyncio
 import math
+import os
 import time
 from array import array
 
 from .. import buttons as B
-from .. import gfx, icons, paths, settings, tz, ui
+from .. import gfx, icons, paths, settings, ui
 from ..display import W, rgb
-from ..player import list_tracks, title_of
+from ..player import EXTS, title_of
 
 TITLE = "Walkman"
 ICON = "cassette"
@@ -120,8 +121,14 @@ _RAMP = array("h", [CAS_X + 46, 124, CAS_X + CAS_W - 46, 124, CAS_X + CAS_W - 34
 
 
 def _split(path):
-    """(title, artist) from "Artist - Title" or "Artist-Title"; the artist may be ""."""
+    """(title, artist) from "Artist - Title" or "Artist-Title", without a leading track
+    number ("01 - ..."); the artist may be ""."""
     name = title_of(path).strip()
+    for sep in (" - ", "-"):
+        num, found, rest = name.partition(sep)
+        if found and num.strip().isdigit() and rest.strip():
+            name = rest.strip()
+            break
     for sep in (" - ", "-"):
         artist, found, title = name.partition(sep)
         if found and artist.strip() and title.strip():
@@ -142,17 +149,32 @@ def _fit(s, px, f="text"):
     return s[:max(0, n - 1)] + ("." if f == "small" else "…")
 
 
-def _vu(sys, on):
-    """on: playback started here, the LEDs follow it if LED VU is enabled; off: back to
-    the user's effect."""
+def _error(e):
+    """Audio's error text, in Italian for the ones a bad file gives."""
+    if e.startswith("not a WAV") or e.startswith("WAV "):
+        return "file WAV non valido"
+    if e.startswith("compressed"):
+        return "serve un WAV PCM"
+    if e.endswith("(only 16-bit)"):
+        return "serve un WAV a 16 bit"
+    if e.startswith("[Errno"):
+        return "file illeggibile"
+    return e
+
+
+def _leds(sys, here=True):
+    """The LEDs are a VU meter while the tape rolls here (if LED VU is on), otherwise
+    the user's effect: call on every playback change, and with here=False on leaving."""
     leds = sys.leds
     if not leds:
         return
-    if on:
-        if settings.get("music_vu", True) and settings.get("leds_on"):
-            leds.set_effect("vu")
-    elif leds.effect == "vu":
-        leds.set_effect(settings.get("led_effect") if settings.get("leds_on") else "off")
+    a = sys.audio
+    on = settings.get("leds_on")
+    rolling = a.playing and not a.paused or a.ended         # ended: the next track is due
+    vu = here and on and rolling and settings.get("music_vu", True)
+    want = "vu" if vu else settings.get("led_effect") if on else "off"
+    if leds.effect != want and "vu" in (want, leds.effect):
+        leds.set_effect(want)
 
 
 async def _unwind(sys):
@@ -166,10 +188,44 @@ async def _unwind(sys):
 async def _play(sys, tracks, i):
     await _unwind(sys)
     sys.player.load(tracks, i)
-    _vu(sys, True)
+
+
+async def _advance(sys):
+    """A track that ended goes on to the next one now (gapless), not at the core's next
+    half-second tick; the new stream gets a moment to start."""
+    if sys.audio.ended:
+        sys.player.tick()
+        await asyncio.sleep_ms(1)
 
 
 # -- library -----------------------------------------------------------------------------
+
+def _audio(name):
+    return name.lower().endswith(EXTS) and not name.startswith(".")
+
+
+async def _scan(folder):
+    """Audio files under folder and its sub-folders (one level), sorted. One directory
+    read per folder (no stat per file), yielding between folders so the music goes on."""
+    root = folder.rstrip("/")
+    out = []
+    try:
+        entries = sorted(os.ilistdir(root))
+    except OSError:
+        return out
+    for e in entries:
+        name, path = e[0], root + "/" + e[0]
+        if e[1] == 0x4000 and not name.startswith("."):
+            try:
+                subs = sorted(f[0] for f in os.ilistdir(path) if f[1] != 0x4000)
+            except OSError:
+                continue
+            out.extend(path + "/" + f for f in subs if _audio(f))
+            await asyncio.sleep_ms(0)
+        elif e[1] != 0x4000 and _audio(name):
+            out.append(path)
+    return out
+
 
 class _Library:
     def __init__(self):
@@ -178,13 +234,16 @@ class _Library:
         self.summary = ""
         self.tag = None             # tag of the selected row, kept across visits
 
-    def scan(self, sys):
+    async def scan(self, sys):
         """The SD card's music folder if it has tracks, else the internal one."""
-        sys.mount_sd()
+        try:
+            sys.mount_sd()
+        except OSError:
+            pass
         name = settings.get("music_dir")
-        self.tracks, where = list_tracks(paths.sd(name)), "SD"
+        self.tracks, where = await _scan(paths.sd(name)), "SD"
         if not self.tracks:
-            self.tracks, where = list_tracks(paths.data(name)), "memoria"
+            self.tracks, where = await _scan(paths.data(name)), "memoria"
         self.names = [_split(t) for t in self.tracks]
         n = len(self.tracks)
         self.summary = "%d %s · %s" % (n, "brano" if n == 1 else "brani", where)
@@ -210,7 +269,7 @@ def _mark(sys, lib, items):
     a = sys.audio
     cur = sys.player.current
     for it in items:
-        if it.tag == "now":
+        if it.tag == "now" and cur:
             mark = "▶ " if a.playing and not a.paused else "‖ " if a.playing else "■ "
             it.value = _fit(mark + _split(cur)[0], 136)
         elif isinstance(it.tag, int):
@@ -241,10 +300,7 @@ def _toggle(sys, it):
         settings.set("repeat", v)
     else:
         settings.set("music_vu", v)
-        if not v:
-            _vu(sys, False)
-        elif sys.audio.playing:
-            _vu(sys, True)
+        _leds(sys)
 
 
 def _hints(it):
@@ -277,7 +333,7 @@ async def _empty(sys):
             lines = gfx.wrap(msg, W - 52)[:4]
             for i, line in enumerate(lines):
                 gfx.text(line, 26, y + 60 + 16 * i, SOFT)
-            gfx.text("Dal Mac: tools/music.py", 26, y + 68 + 16 * len(lines), ui.CYAN)
+            gfx.text("Da MP3: ffmpeg -i a.mp3 a.wav", 26, y + 68 + 16 * len(lines), ui.CYAN)
             ui.footer([("A", "Riproduzione" if loaded else "Aggiorna"), ("A tieni", "Esci")])
             sys.show()
             draw = False
@@ -296,7 +352,7 @@ async def _library(sys, lib):
     while True:
         if lib.tracks is None:
             _loading(sys)
-            lib.scan(sys)
+            await lib.scan(sys)
         if lib.tracks:
             break
         choice = await _empty(sys)
@@ -313,6 +369,8 @@ async def _library(sys, lib):
     full = True
     seen = (p.index, a.playing, a.paused)
     hints = None
+    minute = -1
+    _leds(sys)
     while True:
         n = len(items)
         if sel < top:
@@ -322,6 +380,7 @@ async def _library(sys, lib):
         it = items[sel]
         if full:
             ui.header(sys, TITLE, ICON)
+            minute = time.time() // 60
             gfx.text(lib.summary, W - 10, 26, ui.DIM, align=-1)
             hints = None
         ui.draw_list(items, sel, top, LIST_Y, ROWS)
@@ -337,14 +396,18 @@ async def _library(sys, lib):
             sys.show(LIST_Y, LIST_Y + ROWS * ROW_H)
         while True:
             ev = await sys.event(timeout_ms=500)
-            if ev is not None:
-                break
+            await _advance(sys)
             now = (p.index, a.playing, a.paused)
-            if now != seen:
-                seen = now
-                _mark(sys, lib, items)
+            if now != seen or (ev is None and time.time() // 60 != minute):
+                minute = time.time() // 60
                 ui.statusbar(sys)
                 sys.show(0, ui.STATUS_H)
+                if now != seen:
+                    seen = now
+                    _mark(sys, lib, items)
+                    _leds(sys)
+                    break
+            if ev is not None:
                 break
         if ev is None:
             continue
@@ -362,7 +425,8 @@ async def _library(sys, lib):
             if it.kind == "toggle":
                 _toggle(sys, it)
                 continue
-            await _play(sys, lib.tracks, it.tag)
+            if p.queue != lib.tracks or p.current != lib.tracks[it.tag] or not a.playing:
+                await _play(sys, lib.tracks, it.tag)
             return True
         if kind == B.CLICK and k == B.PLAY and not p.loaded:
             lib.tag = it.tag if isinstance(it.tag, int) else 0
@@ -376,7 +440,8 @@ async def _library(sys, lib):
             sel = (sel + 1) % n
         elif k in (B.LEFT, B.RIGHT):
             if it.kind == "toggle":
-                _toggle(sys, it)
+                if kind == B.PRESS:
+                    _toggle(sys, it)
             elif sel >= first:
                 step = ROWS if k == B.RIGHT else -ROWS
                 sel = max(first, min(n - 1, sel + step))
@@ -490,8 +555,9 @@ class _Deck:
         self.draw_state()
         ui.footer(HINTS)
         self.sig = self.state()
-        self.minute = tz.now()[4]
+        self.minute = time.time() // 60
         sys.show()
+        _leds(sys)
 
     def draw_window(self):
         pct = self.pct()
@@ -546,7 +612,7 @@ class _Deck:
         y = STATE_Y
         gfx.fill_rect(0, y, W, 20, ui.BG)
         if a.error:
-            gfx.text(gfx.ellipsize("! " + a.error, 200), 12, y + 2, ui.RED)
+            gfx.text(gfx.ellipsize("! " + _error(a.error), 200), 12, y + 2, ui.RED)
         else:
             gfx.text("tieni ◄ ► per cercare", 12, y + 5, ui.DIM, "small")
         if a.playing and not a.paused:
@@ -586,17 +652,13 @@ class _Deck:
             a.play(p.current)
         else:
             (p.prev if back else p.next)()
-        _vu(self.sys, True)
 
     async def key(self, k, kind):
         sys = self.sys
         a, p = sys.audio, sys.player
         if k == B.A and kind == B.CLICK:
-            rolling = a.playing and not a.paused
             p.play_pause()
             self.seek_t = time.ticks_ms()
-            if not rolling:
-                _vu(sys, True)
         elif k in (B.LEFT, B.RIGHT):
             bit = 1 << k
             if kind == B.PRESS:
@@ -638,15 +700,14 @@ class _Deck:
                 sys.show(WIN_Y, WIN_Y + WIN_H)
         else:
             self.t = now
-        e = self.elapsed()
-        if int(e) != self.sec:
+        if int(self.elapsed()) != self.sec:
             self.draw_time()
             sys.show(TIME_Y, TIME_Y + 18)
-            minute = tz.now()[4]
-            if minute != self.minute:
-                self.minute = minute
-                ui.statusbar(sys, TITLE)
-                sys.show(0, ui.STATUS_H)
+        minute = time.time() // 60
+        if minute != self.minute:
+            self.minute = minute
+            ui.statusbar(sys, TITLE)
+            sys.show(0, ui.STATUS_H)
 
     async def run(self):
         """Returns True to go back to the library, False on HOME."""
@@ -654,8 +715,9 @@ class _Deck:
         try:
             self.draw()
             while True:
+                await _advance(sys)
                 a = sys.audio
-                wait = 500
+                wait = FRAME_MS             # a stream that starts or stops shows up quickly
                 if a.playing and not a.paused:
                     wait = max(1, FRAME_MS - time.ticks_diff(time.ticks_ms(), self.t))
                 ev = await sys.event(timeout_ms=wait)
@@ -682,8 +744,11 @@ class _Deck:
 
 async def main(sys):
     lib = _Library()
-    if sys.player.loaded and not await _Deck(sys).run():
-        return
-    while await _library(sys, lib):
-        if not await _Deck(sys).run():
+    try:
+        if sys.player.loaded and not await _Deck(sys).run():
             return
+        while await _library(sys, lib):
+            if not await _Deck(sys).run():
+                return
+    finally:
+        _leds(sys, False)

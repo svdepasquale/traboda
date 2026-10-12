@@ -9,6 +9,9 @@ STEPS, comma separated:
   down:NAME/up:NAME press / release a key through the simulated expander (real scan path)
   snap:LABEL        save OUTDIR/LABEL.raw (framebuffer) and LABEL.leds
   battery:VOLTS     set the simulated battery voltage
+  sd:1              pretend an SD card is mounted (the sandbox has a /sd folder)
+  env:KEY=VALUE     set an environment variable (e.g. env:TRABODA_NFC_FAKE=ntag215)
+STEPS may be "@file": steps read from a file, one per line or comma separated.
 Then: python3 sim/topng.py OUTDIR  ->  OUTDIR/LABEL.png (2x, with the LED strip)
 """
 
@@ -28,6 +31,9 @@ import simstate  # noqa: E402
 simpaths.FIXTURES = ROOT + "/sim/fixtures"
 OUT = sys.argv[1]
 STEPS = sys.argv[2] if len(sys.argv) > 2 else "wait:500,snap:home"
+if STEPS.startswith("@"):           # steps from a file: the unix port dies on argv >= 256 chars
+    with open(STEPS[1:]) as f:
+        STEPS = ",".join(ln.strip() for ln in f.read().split("\n") if ln.strip())
 
 
 def mkdirs(path):
@@ -115,6 +121,11 @@ async def scenario(system):
             snap(system, arg)
         elif cmd == "battery":
             simstate.battery_volts = float(arg)
+        elif cmd == "sd":
+            system.sd_mounted = arg != "0"
+        elif cmd == "env":
+            key, _, value = arg.partition("=")
+            os.putenv(key, value)
         else:
             print("unknown step", step)
     if system.errors:

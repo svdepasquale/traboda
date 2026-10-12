@@ -76,6 +76,8 @@ REGION = tuple(_region(p) for p in range(22))
 LIT_FRAMES = tuple([LED[i] if REGION[p] == i else BLACK for p in range(22)] for i in range(4))
 IDLE_FRAME = [tuple(v * 14 // 100 for v in LED[REGION[p]]) for p in range(22)]
 OFF_FRAME = [BLACK] * 22
+OK_FRAME = [(61, 220, 132)] * 22
+FAIL_FRAME = [(255, 30, 30)] * 22
 
 
 def _tone(sys, pad, ms):
@@ -101,12 +103,12 @@ class Simon:
 
     def draw(self):
         gfx.clear(ui.BG)
-        common.hud(TITLE, self.score, self.best)
+        common.hud(TITLE, self.score, max(self.best, self.score))
         for i in range(4):
             self.draw_pad(i)
         self.draw_ring()
         self.draw_center()
-        ui.footer([("▲▼◄►", "Ripeti"), ("▶", "Pausa")])
+        ui.footer([("▲▼◄►", "Ripeti"), ("►‖", "Pausa")])
 
     def draw_pad(self, i):
         on = i == self.lit
@@ -146,13 +148,18 @@ class Simon:
     def light(self, pad, tone_ms=0):
         """Lights one pad (or none with -1), with its LEDs and tone."""
         old, self.lit = self.lit, pad
-        for i in (old, pad):
+        for i in ((pad,) if old == pad else (old, pad)):
             if i >= 0:
                 self.draw_pad(i)
                 self.sys.show(BANDS[i][0], BANDS[i][1])
         common.leds_frame(self.sys, LIT_FRAMES[pad] if pad >= 0 else self.rest)
         if pad >= 0 and tone_ms:
             _tone(self.sys, pad, tone_ms)
+
+    def leave(self, choice):
+        """Keeps the rounds completed so far as a record, then passes choice on."""
+        settings.score(GAME_ID, self.score)
+        return choice
 
     # -- timing and events -------------------------------------------------------------
 
@@ -190,7 +197,7 @@ class Simon:
         self.set_segs(0)
         self.set_label("GUARDA", ui.DIM)
         common.leds_frame(self.sys, OFF_FRAME)
-        r = await self.hold(500)
+        r = await self.hold(900 if n == 1 else 500)
         for pad in self.seq:
             if r:
                 break
@@ -247,20 +254,20 @@ class Simon:
         sys = self.sys
         self.set_segs(0)
         self.set_label("ERRORE", ui.RED)
-        common.leds_flash(sys, (255, 30, 30), 500)
+        self.rest = FAIL_FRAME
+        common.leds_frame(sys, FAIL_FRAME)
         if common.sounds_on():
             try:
                 sys.audio.tone(90, 400)
             except Exception:  # noqa: BLE001
                 pass
-        self.rest = OFF_FRAME
         for _ in range(3):
             self.light(expected)
             if await self.hold(220) == "quit":
-                return "quit"
+                return self.leave("quit")
             self.light(-1)
             if await self.hold(140) == "quit":
-                return "quit"
+                return self.leave("quit")
         return await common.game_over(sys, GAME_ID, TITLE, self.score)
 
 
@@ -282,16 +289,16 @@ async def _game(sys):
             common.hud(TITLE, g.score, max(g.best, g.score))
             sys.show(0, common.HUD_H)
             g.set_label("BRAVO!", ui.GREEN)
-            common.leds_flash(sys, (61, 220, 132), 240)
+            common.leds_frame(sys, OK_FRAME)
             grow = True
             r = await g.hold(600)
         if r == "quit":
-            return "quit"
+            return g.leave("quit")
         if r == "pause":
             g.light(-1)
             choice = await common.pause_menu(sys, TITLE)
             if choice != "resume":
-                return choice
+                return g.leave(choice)
             g.draw()
             sys.show()
         elif isinstance(r, int):

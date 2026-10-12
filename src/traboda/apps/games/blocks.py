@@ -1,8 +1,8 @@
-"""Blocchi: falling tetrominoes with a 7-bag, SRS rotation states and wall kicks, a ghost
-piece and a three-piece preview.
+"""Blocchi: falling tetrominoes with a 7-bag, SRS rotation states with simple wall and
+floor kicks, a lock delay, a ghost piece and a three-piece preview.
 
 The well is diffed against what is on screen, so a frame repaints only the cells that
-changed and pushes only their rows.
+changed and pushes only their rows, as rectangles the width of the well.
 """
 
 import asyncio
@@ -24,7 +24,7 @@ COLS = 10
 ROWS = 22                   # the top two are hidden: pieces spawn there
 HIDDEN = 2
 CELL = 10
-WX = 110                    # visible well on screen; WY on a 10-row band boundary
+WX = 110                    # the visible well on screen
 WY = 20
 VISIBLE = COLS * (ROWS - HIDDEN)
 GREY = 8                    # cell values: 0 empty, 1-7 piece, 8 grey, 9-15 ghost, 16 flash
@@ -141,7 +141,7 @@ class Blocks:
         self.level = 1
         self.best = settings.score(GAME_ID)
         self.flash = ()
-        self.bands = 0              # 10-row screen bands to push
+        self.rows = 0               # well rows to push, a bit each
         self.dirty = 0              # HUD | STATS | NEXT
         self.spawn()
         self.set_leds()
@@ -163,6 +163,7 @@ class Blocks:
         self.fall = 0
         self.lock = 0
         self.resets = 0
+        self.low = self.y
         self.dirty |= NEXT
         if not self.fits(0, 3, self.y):
             return False
@@ -210,11 +211,19 @@ class Blocks:
                 return True
         return False
 
+    def down(self):
+        """One row down. Only a new lowest row gives the lock delay back: a piece kicked
+        up by a rotation must not stall forever."""
+        self.y += 1
+        if self.y > self.low:
+            self.low = self.y
+            self.lock = 0
+            self.resets = 0
+
     def soft_step(self):
         if self.y < self.gy:
-            self.y += 1
+            self.down()
             self.fall = 0
-            self.lock = 0
             self.score += 1
             self.dirty |= HUD
 
@@ -232,8 +241,7 @@ class Blocks:
         self.fall += dt
         while self.fall >= step and self.y < self.gy:
             self.fall -= step
-            self.y += 1
-            self.lock = 0
+            self.down()
             if soft:
                 self.score += 1
                 self.dirty |= HUD
@@ -244,24 +252,26 @@ class Blocks:
         return self.lock >= LOCK_MS
 
     async def land(self):
-        """Locks the piece and clears full rows. False when the stack reached the top."""
+        """Locks the piece and clears full rows. False when something is left in the
+        hidden rows once the lines are gone (or the next piece does not fit)."""
         cells = SHAPES[self.t][self.r]
         board = self.board
-        top = ROWS
+        lost = False
         rows = []
         for i in range(0, 8, 2):
             y = self.y + cells[i + 1]
-            top = min(top, y)
-            if y >= 0:
+            if y < 0:
+                lost = True             # kicked above the board: nowhere to keep it
+            else:
                 board[y * COLS + self.x + cells[i]] = self.t + 1
                 if y not in rows:
                     rows.append(y)
         self.t = -1
-        if top < HIDDEN:
-            return False
         full = [y for y in rows if min(board[y * COLS:y * COLS + COLS])]
         if full:
             await self.clear(full)
+        if lost or max(board[:COLS * HIDDEN]):
+            return False
         return self.spawn()
 
     async def clear(self, full):
@@ -320,9 +330,10 @@ class Blocks:
         want = self.want
         want[:] = self.view
         for y in self.flash:
-            i = (y - HIDDEN) * COLS
-            for j in range(i, i + COLS):
-                want[j] = FLASH
+            if y >= HIDDEN:
+                i = (y - HIDDEN) * COLS
+                for j in range(i, i + COLS):
+                    want[j] = FLASH
         t = self.t
         if t >= 0:
             cells = SHAPES[t][self.r]
@@ -345,11 +356,7 @@ class Blocks:
                 shown[i] = v
                 _cell(i, v)
                 rows |= 1 << (i // COLS)
-        self.bands |= rows << (WY // 10)
-
-    def mark(self, y0, y1):
-        for b in range(y0 // 10, (y1 + 9) // 10):
-            self.bands |= 1 << b
+        self.rows |= rows
 
     def draw_stats(self):
         gfx.round_rect(8, 24, 92, 64, 8, ui.PANEL)
@@ -359,7 +366,6 @@ class Blocks:
         gfx.text("LINEE", 54, 102, ui.DIM, "small", align=1)
         gfx.text(str(self.lines), 54, 118, ui.TEXT, "title", align=1)
         gfx.bar(20, 152, 68, 6, self.lines % 10 / 10, ui.CYAN, ui.PANEL2, 3)
-        self.mark(24, 168)
 
     def draw_next(self):
         gfx.round_rect(220, 24, 92, 144, 8, ui.PANEL)
@@ -368,7 +374,6 @@ class Blocks:
         _preview(self.queue[0], 266, 66, 10)
         _preview(self.queue[1], 266, 110, 8)
         _preview(self.queue[2], 266, 144, 8)
-        self.mark(24, 168)
 
     def draw_all(self):
         gfx.clear(ui.BG)
@@ -383,33 +388,36 @@ class Blocks:
         self.draw_stats()
         self.draw_next()
         ui.footer(HINTS)
-        self.bands = 0
+        self.rows = 0
         self.dirty = 0
 
     def flush(self):
-        """Redraws the panels whose values changed, then pushes every touched band."""
+        """Redraws and pushes the panels whose values changed (only the part that can
+        differ), then every run of touched well rows."""
+        sys = self.sys
         d = self.dirty
         if d & HUD:
             common.hud(TITLE, self.score, max(self.best, self.score))
-            self.mark(0, common.HUD_H)
+            sys.show(0, common.HUD_H)
         if d & STATS:
             self.draw_stats()
+            sys.show_rect(8, 46, 92, 112)       # level, lines and the bar
         if d & NEXT:
             self.draw_next()
+            sys.show_rect(228, 46, 76, 106)     # the three previews
         self.dirty = 0
-        bands = self.bands
-        show = self.sys.show
-        b = 0
-        while bands:
-            if bands & 1:
-                start = b
-                while bands & 1:
-                    bands >>= 1
-                    b += 1
-                show(start * 10, b * 10)
-            bands >>= 1
-            b += 1
-        self.bands = 0
+        rows = self.rows
+        r = 0
+        while rows:
+            if rows & 1:
+                start = r
+                while rows & 1:
+                    rows >>= 1
+                    r += 1
+                sys.show_rect(WX, WY + start * CELL, COLS * CELL, (r - start) * CELL)
+            rows >>= 1
+            r += 1
+        self.rows = 0
 
 
 def _pause_key(ev):
@@ -419,7 +427,10 @@ def _pause_key(ev):
 
 
 def _discard(sys):
-    """Drops the events queued meanwhile; False if one of them was HOME."""
+    """Drops the events queued meanwhile; False on HOME (common.drain would spin on the
+    HOME of a pending app, so that is checked first)."""
+    if sys.pending_app():
+        return False
     for ev in common.drain(sys):
         if B.kind(ev) == sys.HOME:
             return False
@@ -443,14 +454,15 @@ async def _settle(sys):
     return _discard(sys)
 
 
-async def main(sys):
-    game = Blocks(sys)
+async def _play(sys, game):
     if not await _start(sys, game):
         return
     tick = common.Ticker(30)
     last = time.ticks_ms()
     while True:
         drop = False
+        if sys.pending_app():
+            return
         for ev in common.drain(sys):
             k, kind = B.key(ev), B.kind(ev)
             if kind == sys.HOME:
@@ -463,6 +475,7 @@ async def main(sys):
                 if choice == "quit":
                     return
                 if choice == "restart":
+                    settings.score(GAME_ID, game.score)
                     game.reset()
                 if not await _start(sys, game):
                     return
@@ -489,6 +502,8 @@ async def main(sys):
             if not alive:
                 game.flush()
                 await game.top_out()
+                if not await _settle(sys):
+                    return
                 if await common.game_over(sys, GAME_ID, TITLE, game.score) == "quit":
                     return
                 game.reset()
@@ -499,3 +514,11 @@ async def main(sys):
         game.flush()
         common.leds_frame(sys, game.led)
         await tick.wait()
+
+
+async def main(sys):
+    game = Blocks(sys)
+    try:
+        await _play(sys, game)
+    finally:
+        settings.score(GAME_ID, game.score)     # a game left halfway still counts

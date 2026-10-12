@@ -69,6 +69,8 @@ class Audio:
         self._stop = False
         self._seek_to = None
         self._b1 = bytearray(1)
+        self._tones = {}           # (freq, ms, level, rate, channels) -> PCM
+        self._last_use = time.ticks_ms()
 
     # -- codec -----------------------------------------------------------------------------
 
@@ -117,24 +119,51 @@ class Audio:
     # -- effects ---------------------------------------------------------------------------
 
     def tone(self, freq, ms, level=0.3):
-        """A short square-ish tone (blocking for its duration at most)."""
+        """A short square tone, blocking for its duration at most. It plays in the format
+        of a paused track rather than re-opening the I2S under it; while a track plays it
+        is skipped (there is no mixer)."""
         if self.playing and not self.paused:
             return
-        self._open(_UI_RATE, 1)
-        n = _UI_RATE * ms // 1000
-        period = max(2, _UI_RATE // max(1, freq))
-        amp = int(32767 * level)
-        buf = bytearray(n * 2)
+        if self.i2s is None:
+            self._open(_UI_RATE, 1)
+        self.i2s.write(self._tone_pcm(freq, ms, level))
+        self._last_use = time.ticks_ms()
+
+    def _tone_pcm(self, freq, ms, level):
+        key = (freq, ms, level, self.rate, self.channels)
+        pcm = self._tones.get(key)
+        if pcm is not None:
+            return pcm
+        rate = self.rate
+        frame = 2 * self.channels
+        n = max(1, rate * ms // 1000)
+        period = max(2, rate // max(1, freq))
         half = period // 2
-        fade = min(n, _UI_RATE // 200)
-        for i in range(n):
-            v = amp if (i % period) < half else -amp
-            if i < fade:
-                v = v * i // fade
-            elif i > n - fade:
-                v = v * (n - i) // fade
-            struct.pack_into("<h", buf, i * 2, v)
-        self.i2s.write(buf)
+        amp = int(32767 * level)
+        hi = struct.pack("<h", amp) * self.channels
+        lo = struct.pack("<h", -amp) * self.channels
+        one = hi * half + lo * (period - half)
+        pcm = bytearray((one * (n // period + 1))[:n * frame])   # repeated in C
+        fade = min(n // 2, rate // 200)
+        for i in range(fade):                                    # 5 ms ramps, both ends
+            for j in (i, n - 1 - i):
+                for c in range(self.channels):
+                    o = j * frame + 2 * c
+                    v = struct.unpack_from("<h", pcm, o)[0]
+                    struct.pack_into("<h", pcm, o, v * i // fade)
+        if len(self._tones) > 48:
+            self._tones.clear()
+        self._tones[key] = pcm
+        return pcm
+
+    def idle_check(self):
+        """Powers the codec, amplifier and boost down after 2 s without sound (30 s while a
+        track is paused); playback re-opens them. Called by the status task."""
+        if self.i2s is None:
+            return
+        idle = time.ticks_diff(time.ticks_ms(), self._last_use)
+        if (not self.playing and idle > 2000) or (self.paused and idle > 30000):
+            self.close()
 
     def click(self):
         self.tone(2400, 6, 0.12)
@@ -160,6 +189,7 @@ class Audio:
     def toggle(self):
         if self.playing:
             self.paused = not self.paused
+            self._last_use = time.ticks_ms()
 
     def stop(self):
         if self._task:
@@ -182,6 +212,7 @@ class Audio:
         self._seek_to = max(0, int(seconds * self.byte_rate)) & ~3
 
     async def _run(self, path):
+        me = asyncio.current_task()
         f = None
         try:
             f = open(path, "rb")
@@ -195,7 +226,8 @@ class Audio:
             self.position = 0
             self.playing = True
             self._seek_to = None
-            out = asyncio.StreamWriter(self.i2s)
+            i2s = self.i2s
+            out = asyncio.StreamWriter(i2s)
             buf = bytearray(4096)
             mv = memoryview(buf)
             frame = channels * 2
@@ -204,6 +236,11 @@ class Audio:
                     self.levels = (0.0, 0.0)
                     await asyncio.sleep_ms(40)
                     continue
+                if self.i2s is not i2s:          # closed while paused, or re-opened
+                    self._open(rate, channels)
+                    i2s = self.i2s
+                    out = asyncio.StreamWriter(i2s)
+                self._last_use = time.ticks_ms()
                 if self._seek_to is not None:
                     f.seek(data_start + min(self._seek_to, size))
                     self.position = min(self._seek_to, size)
@@ -224,9 +261,10 @@ class Audio:
         finally:
             if f:
                 f.close()
-            self.playing = False
-            self.levels = (0.0, 0.0)
-            self._task = None
+            if self._task is me:                 # a cancelled old stream leaves the new one be
+                self.playing = False
+                self.levels = (0.0, 0.0)
+                self._task = None
 
 
 def _peaks(buf, n, channels):

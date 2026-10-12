@@ -7,11 +7,14 @@
   tools/dev.py sync         compile src/traboda to .mpy and copy it to /traboda on the
                             badge, where it shadows the frozen copy
   tools/dev.py clean        remove that overlay (the frozen OS runs again)
-  tools/dev.py run          soft-reset the badge (main.py starts the OS)
+  tools/dev.py run          reboot the badge (main.py starts the OS)
   tools/dev.py snap OUT.png screenshot of the running OS
   tools/dev.py key NAME [ms] press a key on the running OS (up down left right A B play prev next)
   tools/dev.py time         set the badge clock from the Mac
   tools/dev.py toast TEXT   show a notification on the badge
+  tools/dev.py wifi [SSID]  give the badge a Wi-Fi network: the password comes from the
+                            macOS keychain (a system dialog asks you), goes over USB to the
+                            running OS and is stored on the badge only
 
 Needs mpremote and mpy-cross (built by firmware/build.sh) on the PATH or in their usual
 places, and pyserial for the commands that talk to the running OS.
@@ -163,6 +166,30 @@ def snap(port, out):
     print("wrote", out)
 
 
+def current_ssid():
+    out = subprocess.run(["ipconfig", "getsummary", "en0"], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("SSID :"):
+            ssid = line.split(":", 1)[1].strip()
+            return None if ssid.startswith("<") else ssid   # macOS redacts it without location access
+    return None
+
+
+def wifi(port, ssid):
+    import json
+    ssid = ssid or current_ssid()
+    if not ssid:
+        sys.exit("no SSID: pass one, e.g. tools/dev.py wifi MyNetwork")
+    r = subprocess.run(["security", "find-generic-password", "-D", "AirPort network password",
+                        "-a", ssid, "-w"], capture_output=True, text=True)
+    if r.returncode:
+        sys.exit("no keychain password for %r (or access denied)" % ssid)
+    payload = json.dumps({"ssid": ssid, "password": r.stdout.strip()})
+    reply = command(port, "wifi " + payload, until=b"@@", timeout=5)
+    print("badge: %s for %s" % ("saved, joining" if b"@@OK" in reply else "no answer", ssid))
+
+
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__)
@@ -173,7 +200,8 @@ def main():
     elif cmd == "clean":
         clean(port)
     elif cmd == "run":
-        mpremote(port, "soft-reset", check=False)
+        # A soft reset inside mpremote's raw REPL does not run main.py: reboot instead.
+        mpremote(port, "exec", "import machine; machine.reset()", check=False)
     elif cmd == "snap":
         snap(port, args[0] if args else "snap.png")
     elif cmd == "key":
@@ -182,6 +210,8 @@ def main():
         command(port, "time %d" % int(time.time()))
     elif cmd == "toast":
         command(port, "toast " + " ".join(args))
+    elif cmd == "wifi":
+        wifi(port, args[0] if args else None)
     else:
         sys.exit(__doc__)
 

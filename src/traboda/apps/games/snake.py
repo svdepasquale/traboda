@@ -1,7 +1,7 @@
 """Snake: steer with the D-pad, eat to grow and speed up; the walls and your own body kill.
 
 Each step repaints only the cells that changed (new head, old head, tail, food) and
-pushes only their rows.
+pushes only those cells.
 """
 
 import asyncio
@@ -55,6 +55,7 @@ class Snake:
     def __init__(self, sys):
         self.sys = sys
         self.body = [0] * SIZE          # ring buffer of cells; self.head is the newest
+        self.marks = [0] * 12           # cells to push after this step
         self.led = [OFF] * 22
         self.reset()
 
@@ -75,7 +76,7 @@ class Snake:
         self.best = settings.score(GAME_ID)
         self.ms = START_MS
         self.won = False
-        self.rows = 0                   # bitmask of cell rows to push
+        self.nmarks = 0
         self.hud_dirty = False
         self.place_food()
         self.set_leds()
@@ -106,7 +107,10 @@ class Snake:
     # -- drawing --------------------------------------------------------------------------
 
     def mark(self, c):
-        self.rows |= 1 << (c // GW)
+        n = self.nmarks
+        if n < len(self.marks):
+            self.marks[n] = c
+        self.nmarks = n + 1             # past the end: flush pushes the whole field
 
     def erase(self, c):
         x, y = _xy(c)
@@ -184,28 +188,24 @@ class Snake:
         self.draw_snake()
         self.draw_food()
         ui.footer(HINTS)
-        self.rows = 0
+        self.nmarks = 0
         self.hud_dirty = False
 
     def flush(self):
-        """Pushes the HUD if the score changed and every run of touched cell rows."""
-        show = self.sys.show
+        """Pushes the HUD if the score changed and every touched cell."""
+        sys = self.sys
         if self.hud_dirty:
             common.hud(TITLE, self.score, max(self.best, self.score))
-            show(0, common.HUD_H)
+            sys.show(0, common.HUD_H)
             self.hud_dirty = False
-        rows = self.rows
-        r = 0
-        while rows:
-            if rows & 1:
-                start = r
-                while rows & 1:
-                    rows >>= 1
-                    r += 1
-                show(Y0 + start * CELL, Y0 + r * CELL)
-            rows >>= 1
-            r += 1
-        self.rows = 0
+        n = self.nmarks
+        if n > len(self.marks):
+            sys.show(Y0, Y0 + GH * CELL)
+        else:
+            for i in range(n):
+                x, y = _xy(self.marks[i])
+                sys.show_rect(x, y, CELL, CELL)
+        self.nmarks = 0
 
     # -- game -----------------------------------------------------------------------------
 
@@ -258,7 +258,7 @@ class Snake:
         common.sfx(self.sys, "hit")
         for i in range(5):
             self.draw_snake(i % 2 == 0)
-            self.rows = 0
+            self.nmarks = 0
             self.sys.show(Y0, Y0 + GH * CELL)
             await asyncio.sleep_ms(110)
 
@@ -270,7 +270,10 @@ def _pause_key(ev):
 
 
 def _discard(sys):
-    """Drops the events queued meanwhile; False if one of them was HOME."""
+    """Drops the events queued meanwhile; False on HOME (common.drain would spin on the
+    HOME of a pending app, so that is checked first)."""
+    if sys.pending_app():
+        return False
     for ev in common.drain(sys):
         if B.kind(ev) == sys.HOME:
             return False
@@ -294,13 +297,14 @@ async def _settle(sys):
     return _discard(sys)
 
 
-async def main(sys):
-    game = Snake(sys)
+async def _play(sys, game):
     if not await _start(sys, game):
         return
     tick = common.Ticker(100)
     due = time.ticks_add(time.ticks_ms(), game.ms)
     while True:
+        if sys.pending_app():
+            return
         for ev in common.drain(sys):
             k, kind = B.key(ev), B.kind(ev)
             if kind == sys.HOME:
@@ -313,6 +317,7 @@ async def main(sys):
                 if choice == "quit":
                     return
                 if choice == "restart":
+                    settings.score(GAME_ID, game.score)
                     game.reset()
                 if not await _start(sys, game):
                     return
@@ -328,6 +333,8 @@ async def main(sys):
             if not game.step() or game.won:
                 if not game.won:
                     await game.crash()
+                if not await _settle(sys):
+                    return
                 if await common.game_over(sys, GAME_ID, TITLE, game.score, game.won) == "quit":
                     return
                 game.reset()
@@ -337,3 +344,11 @@ async def main(sys):
         game.flush()
         common.leds_frame(sys, game.led)
         await tick.wait()
+
+
+async def main(sys):
+    game = Snake(sys)
+    try:
+        await _play(sys, game)
+    finally:
+        settings.score(GAME_ID, game.score)     # a game left halfway still counts

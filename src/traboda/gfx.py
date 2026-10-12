@@ -133,7 +133,11 @@ def ellipsize(s, width, f="text"):
     if isinstance(f, str):
         f = font(f)
     n = width // f.w
-    return s if len(s) <= n else s[:max(0, n - 1)] + "…"
+    if len(s) <= n:
+        return s
+    if "…" in f.chars:
+        return s[:max(0, n - 1)] + "…"
+    return s[:max(0, n - 2)] + ".."
 
 
 # Shapes -------------------------------------------------------------------------------

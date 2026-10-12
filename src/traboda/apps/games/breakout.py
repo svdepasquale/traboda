@@ -1,7 +1,8 @@
 """Mattoncini: break the wall with the paddle and the ball. Three lives; every wall
 cleared brings a new one and a faster ball. Only the ball, the paddle and the hit
-bricks are redrawn each frame, and only their rows are pushed."""
+bricks are redrawn each frame, and only their rectangles are pushed."""
 
+import asyncio
 import math
 
 from ... import buttons as B
@@ -57,10 +58,31 @@ _PAD_LIGHT = rgb(255, 150, 190)
 _OFF = (0, 0, 0)
 
 
-def _skip_events(sys):
-    """Drops stale key events (common.drain would spin on the HOME of a pending app)."""
-    if not sys.pending_app():
-        common.drain(sys)
+def _pause_key(ev):
+    """Play, A held, or a tap on B (B held is HOME and leaves the game)."""
+    k, kind = B.key(ev), B.kind(ev)
+    return common.wants_pause(ev) or (k == B.A and kind == B.LONG) or (k == B.B and kind == B.CLICK)
+
+
+def _discard(sys):
+    """Drops the events queued meanwhile; False on HOME (common.drain would spin on the
+    HOME of a pending app, so that is checked first)."""
+    if sys.pending_app():
+        return False
+    for ev in common.drain(sys):
+        if B.kind(ev) == sys.HOME:
+            return False
+    return True
+
+
+async def _settle(sys):
+    """Waits (up to 1 s) for the keys still held from play, which would otherwise answer
+    the game-over dialog, then drops them; False on HOME."""
+    for _ in range(50):
+        if not sys.buttons.state:
+            break
+        await asyncio.sleep_ms(20)
+    return _discard(sys)
 
 
 def _ball(x, y):
@@ -72,8 +94,8 @@ class Game:
     def __init__(self, sys):
         self.sys = sys
         self.bricks = bytearray(ROWS * COLS)
-        self.spans = [0] * 16           # row bands to push this frame: y0, y1, ...
-        self.nspans = 0
+        self.rects = [0] * 48           # rectangles to push this frame: x, y, w, h, ...
+        self.nrects = 0
         self.heat_row = bytearray(11)   # LED column glow, by brick hits
         self.leds = [_OFF] * 22
         self.reset()
@@ -155,32 +177,25 @@ class Game:
         self.draw_all()
         self.sys.show()
 
-    def dirty(self, y0, y1):
-        if self.nspans < len(self.spans):
-            self.spans[self.nspans] = y0
-            self.spans[self.nspans + 1] = y1
-            self.nspans += 2
+    def dirty(self, x, y, w, h):
+        r = self.rects
+        n = self.nrects
+        if n == len(r):                 # out of slots: what is queued is final, push it
+            self.flush()
+            n = 0
+        r[n] = x
+        r[n + 1] = y
+        r[n + 2] = w
+        r[n + 3] = h
+        self.nrects = n + 4
 
     def flush(self):
-        """Pushes the dirty bands, merging the ones that touch."""
-        s = self.spans
-        n = self.nspans
-        i = 0
-        while i < n:
-            j = i + 2
-            while j < n:
-                if s[j] <= s[i + 1] + 4 and s[j + 1] >= s[i] - 4:
-                    s[i] = min(s[i], s[j])
-                    s[i + 1] = max(s[i + 1], s[j + 1])
-                    n -= 2
-                    s[j] = s[n]
-                    s[j + 1] = s[n + 1]
-                    j = i + 2
-                else:
-                    j += 2
-            self.sys.show(max(0, s[i]), min(BOTTOM, s[i + 1]))
-            i += 2
-        self.nspans = 0
+        """Pushes the rectangles queued this frame."""
+        r = self.rects
+        show_rect = self.sys.show_rect
+        for i in range(0, self.nrects, 4):
+            show_rect(r[i], r[i + 1], r[i + 2], r[i + 3])
+        self.nrects = 0
 
     def tick_leds(self):
         """Fades the hit columns; the frame is handed over every time because a flash
@@ -206,7 +221,7 @@ class Game:
         self.state = PLAY
         self.serves += 1
         gfx.fill_rect(0, MSG_Y - 2, 320, 50, ui.BG)
-        self.dirty(MSG_Y - 2, MSG_Y + 48)
+        self.dirty(0, MSG_Y - 2, 320, 50)
         self.aim(0.45 * d if d else (0.35 if self.serves % 2 else -0.35))
 
     def smash(self, r, c):
@@ -216,7 +231,7 @@ class Game:
         x = c * 32 + 1
         y = WALL_Y + r * 12
         gfx.fill_rect(x, y, BRICK_W, BRICK_H, ui.BG)
-        self.dirty(y, y + BRICK_H)
+        self.dirty(x, y, BRICK_W, BRICK_H)
         col = (x + BRICK_W // 2) * 11 // 320
         self.heat[col] = 8
         self.heat_row[col] = r
@@ -304,7 +319,7 @@ class Game:
         await self.sys.sleep_ms(1000)
 
     async def lost_ball(self):
-        """Returns the game-over choice when that was the last ball, else None."""
+        """Returns the game-over choice after the last ball (or "quit" on HOME), else None."""
         sys = self.sys
         self.lives -= 1
         self.draw_hud()
@@ -312,14 +327,16 @@ class Game:
         common.leds_flash(sys, (255, 0, 0), 500)
         if not self.lives:
             await sys.sleep_ms(500)
+            if not await _settle(sys):
+                return self.leave("quit")
             return await common.game_over(sys, GAME_ID, TITLE, self.score)
         common.sfx(sys, "lose")
         self.serve("Palla persa!", ui.ORANGE)
         self.paint()
-        _skip_events(sys)
-        return None
+        return None if _discard(sys) else self.leave("quit")
 
     async def cleared(self):
+        """The next wall; False on HOME."""
         sys = self.sys
         common.sfx(sys, "win")
         common.leds_flash(sys, (61, 220, 132), 900)
@@ -328,7 +345,7 @@ class Game:
         self.wall()
         self.serve("Livello %d" % self.level, ui.YELLOW)
         self.paint()
-        _skip_events(sys)
+        return _discard(sys)
 
     async def run(self):
         sys = self.sys
@@ -346,7 +363,7 @@ class Game:
                     self.paint()
                 elif kind == sys.HOME:
                     return self.leave("quit")
-                elif common.wants_pause(ev) or sys.is_back(ev):
+                elif _pause_key(ev):
                     choice = await common.pause_menu(sys, TITLE)
                     if choice != "resume" or sys.pending_app():
                         return self.leave("quit" if sys.pending_app() else choice)
@@ -354,7 +371,8 @@ class Game:
                         await common.countdown(sys, self.draw_all)
                     else:
                         self.paint()
-                    _skip_events(sys)
+                    if not _discard(sys):
+                        return self.leave("quit")
                     break
                 elif kind == B.PRESS and k in (B.A, B.UP):
                     launch = True
@@ -390,11 +408,13 @@ class Game:
             ny = self.by >> 8
             if not lost:
                 _ball(nx, ny)
-            self.dirty(PAD_Y, PAD_Y + PAD_H)
-            self.dirty(min(oy, ny), max(oy, ny) + BALL)
+            if old_pad != self.pad_x:
+                x = min(old_pad, self.pad_x)
+                self.dirty(x, PAD_Y, max(old_pad, self.pad_x) + PAD_W - x, PAD_H)
+            self.dirty(min(ox, nx), min(oy, ny), abs(nx - ox) + BALL, abs(ny - oy) + BALL)
             if sound == "hit":
                 self.draw_hud()
-                self.dirty(0, TOP)
+                self.dirty(0, 0, 320, TOP)
             self.flush()
             self.tick_leds()
             if sound:
@@ -403,8 +423,8 @@ class Game:
                 choice = await self.lost_ball()
                 if choice:
                     return choice
-            elif not self.left:
-                await self.cleared()
+            elif not self.left and not await self.cleared():
+                return self.leave("quit")
             await tick.wait()
 
 

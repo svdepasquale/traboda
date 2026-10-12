@@ -176,6 +176,15 @@ def _to_hl(c):
     return int(h * 6 + 0.5) % 36, max(0, min(10, l))
 
 
+def _uncursor(cells, h, l):
+    """Repaints the picker cells (and the margin) under the cursor drawn at (h, l)."""
+    row = 10 - l
+    gfx.fill_rect(FIELD_X + h * CELL_W - 2, FIELD_Y + row * CELL_H - 2, CELL_W + 4, CELL_H + 4, ui.BG)
+    for r in range(max(0, row - 1), min(11, row + 2)):
+        for q in range(max(0, h - 1), min(36, h + 2)):
+            gfx.fill_rect(FIELD_X + q * CELL_W, FIELD_Y + r * CELL_H, CELL_W, CELL_H, cells[r * 36 + q])
+
+
 def _tile_xy(i):
     if i < len(PRESETS):
         return 8 + i % 4 * (TILE_W + 8), 58 + i // 4 * (TILE_H + 10), TILE_W, TILE_H
@@ -206,13 +215,13 @@ class Studio:
         self.load()
 
     def load(self):
-        """State from settings and the live engine (read again after the quick panel)."""
+        """State from settings (read again after the quick panel and the sub-screens)."""
         self.on = bool(settings.get("leds_on"))
         fx = settings.get("led_effect")
         self.fx = fx if fx in FX else "rainbow"
         self.color = tuple(settings.get("led_color"))
         self.level = max(5, min(100, settings.get("led_brightness")))
-        speed = self.leds.speed if self.leds else settings.get("led_speed", 1.0)
+        speed = settings.get("led_speed", 1.0)
         self.speed = min(range(len(SPEEDS)), key=lambda i: abs(SPEEDS[i] - speed))
         if _preset(self.color) is None:
             self.custom = self.color
@@ -416,6 +425,7 @@ class Studio:
 
     async def run(self):
         sys = self.sys
+        self.apply()
         self.draw()
         while True:
             ev = await sys.event(timeout_ms=50)
@@ -437,6 +447,8 @@ class Studio:
                 elif key in ("color", "torch"):
                     if await (self.palette() if key == "color" else self.torch()) == HOME:
                         return
+                    self.load()
+                    self.apply()
                     self.draw()
                     continue
             elif kind in (B.PRESS, B.REPEAT) and k in (B.UP, B.DOWN):
@@ -490,13 +502,20 @@ class Studio:
                 for i in range(len(PRESETS) + 1):
                     self.draw_tile(i, i == sel, grad)
                 ui.footer([("A", "Scegli"), ("A tieni", "Annulla")])
-                full = False
             elif old != sel:
                 self.draw_tile(old, False, grad)
                 self.draw_tile(sel, True, grad)
             gfx.fill_rect(120, 22, 196, 20, ui.BG)
             gfx.text(PRESETS[sel][0] if sel < len(PRESETS) else CUSTOM, 310, 24, ui.CYAN, align=-1)
-            sys.show()
+            if full:
+                sys.show()
+                full = False
+            else:
+                sys.show(22, 42)
+                if old != sel:
+                    for i in (old, sel):
+                        _x, y, _w, h = _tile_xy(i)
+                        sys.show(y - 4, y + h + 4)
             old = sel
             ev = await sys.event()
             if ev is None:
@@ -543,15 +562,18 @@ class Studio:
         h, l = _to_hl(self.custom or self.color)
         cells = [rgb(*_hl_color(i % 36, 10 - i // 36)) for i in range(36 * 11)]
         full = True
+        old = None
         while True:
             c = _hl_color(h, l)
             self.apply(self.preview_fx(), c)
             if full:
                 ui.header(sys, CUSTOM, "palette")
                 ui.footer([("A", "Scegli"), ("A tieni", "Annulla")])
-            gfx.fill_rect(FIELD_X - 2, FIELD_Y - 2, 36 * CELL_W + 4, 11 * CELL_H + 4, ui.BG)
-            for i in range(36 * 11):
-                gfx.fill_rect(FIELD_X + i % 36 * CELL_W, FIELD_Y + i // 36 * CELL_H, CELL_W, CELL_H, cells[i])
+                for i in range(36 * 11):
+                    gfx.fill_rect(FIELD_X + i % 36 * CELL_W, FIELD_Y + i // 36 * CELL_H, CELL_W, CELL_H,
+                                  cells[i])
+            else:
+                _uncursor(cells, old[0], old[1])
             x = FIELD_X + h * CELL_W
             y = FIELD_Y + (10 - l) * CELL_H
             gfx.rect(x - 2, y - 2, CELL_W + 4, CELL_H + 4, ui.BLACK)
@@ -568,7 +590,10 @@ class Studio:
                 sys.show()
                 full = False
             else:
-                sys.show(FIELD_Y - 2, ui.FOOTER_Y)
+                oy = FIELD_Y + (10 - old[1]) * CELL_H
+                sys.show(min(y, oy) - 2, max(y, oy) + CELL_H + 2)
+                sys.show(174, ui.FOOTER_Y)
+            old = (h, l)
             ev = await sys.event()
             if ev is None:
                 continue
@@ -597,15 +622,14 @@ class Studio:
     async def torch(self):
         """Every LED white at the highest allowed level, the screen white too, until a key."""
         sys = self.sys
-        bright = sys.display.brightness
-        if self.leds:
-            self.leds.level = 1.0
-            self.leds.set_effect("solid", (255, 255, 255))
-        sys.display.set_brightness(100)
         try:
             full = True
             while True:
-                if full:
+                if full:            # again after the quick panel, which may change both
+                    if self.leds:
+                        self.leds.level = 1.0
+                        self.leds.set_effect("solid", (255, 255, 255))
+                    sys.display.set_brightness(100)
                     _draw_torch()
                     sys.show()
                     full = False
@@ -621,7 +645,7 @@ class Studio:
                 elif kind in (B.CLICK, B.LONG):
                     return None
         finally:
-            sys.display.set_brightness(bright)
+            sys.display.set_brightness(settings.get("brightness"))
             self.apply()
 
 

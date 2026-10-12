@@ -96,6 +96,53 @@ icons.register("wf_auto", (
 _scan = []      # last scan: [(ssid, rssi, channel, secure), ...] strongest first
 
 
+class _Nav:
+    """The System as the ui widgets see it, noting HOME so that nested screens all leave."""
+
+    def __init__(self, sys):
+        self.sys = sys
+        self.home = False
+
+    def __getattr__(self, name):
+        return getattr(self.sys, name)
+
+    async def event(self, timeout_ms=None):
+        ev = await self.sys.event(timeout_ms)
+        if ev is not None and B.kind(ev) == self.sys.HOME:
+            self.home = True
+        return ev
+
+
+async def _linger(nav, ms):
+    """Waits ms; a key cuts it short and is used up to its release, so that it does not
+    also act on the screen underneath."""
+    if not await nav.sleep_ms(ms, interruptible=True):
+        return
+    k = None
+    held = False
+    while True:
+        ev = await nav.event(timeout_ms=1000)
+        if ev is None or B.kind(ev) == nav.HOME:
+            return
+        kind = B.kind(ev)
+        if kind == nav.REDRAW:
+            continue
+        if k is None:
+            if kind == B.PRESS:
+                k = B.key(ev)
+        elif B.key(ev) == k:
+            if kind == B.LONG:
+                held = True
+            elif kind == B.CLICK or (kind == B.RELEASE and held):
+                return
+
+
+async def _toast(nav, msg, ms=1500):
+    ui.toast_draw(msg)
+    nav.show()
+    await _linger(nav, ms)
+
+
 # -- small drawing helpers ---------------------------------------------------------------
 
 def _level(rssi):
@@ -155,8 +202,8 @@ def _root_items():
     return items
 
 
-def _card_state(sys):
-    return (net.connected(), net.ssid, net.rssi(), net.status, sys.clock_text(), sys.battery)
+def _card_state(nav):
+    return (net.connected(), net.ssid, net.rssi(), net.status, nav.clock_text(), nav.battery)
 
 
 def _draw_card():
@@ -185,42 +232,52 @@ def _draw_card():
 
 
 async def main(sys):
+    nav = _Nav(sys)
     sel = top = 0
     full = True
     note = None
     try:
-        while True:
+        while not nav.home:
             items = _root_items()
             sel = min(sel, len(items) - 1)
             top = max(0, min(top, sel, len(items) - LIST_ROWS))
             if sel >= top + LIST_ROWS:
                 top = sel - LIST_ROWS + 1
             if full:
-                ui.header(sys, TITLE, ICON)
+                ui.header(nav, TITLE, ICON)
                 ui.footer([("A", "Ok"), ("A tieni", "Indietro")])
-                full = False
-            state = _card_state(sys)
+            state = _card_state(nav)
             _draw_card()
             ui.draw_list(items, sel, top, LIST_Y, LIST_ROWS)
-            sys.show()
+            if full:
+                nav.show()
+                full = False
+            else:
+                nav.show(CARD_Y, LIST_Y + LIST_ROWS * ui.ROW_H)
             if note:
-                await ui.toast(sys, note, 1500)
+                await _toast(nav, note)
                 note = None
                 full = True
                 continue
-            ev = await sys.event(timeout_ms=2000)
+            ev = await nav.event(timeout_ms=2000)
             while ev is None:
-                if _card_state(sys) != state:
-                    state = _card_state(sys)
-                    ui.statusbar(sys)
+                now = _card_state(nav)
+                if now[0] != state[0]:
+                    full = True             # connected or not: the list changes as well
+                    break
+                if now != state:
+                    state = now
+                    ui.statusbar(nav)
                     _draw_card()
-                    sys.show(0, CARD_Y + CARD_H)
-                ev = await sys.event(timeout_ms=2000)
+                    nav.show(0, CARD_Y + CARD_H)
+                ev = await nav.event(timeout_ms=2000)
+            if ev is None:
+                continue
             k, kind = B.key(ev), B.kind(ev)
-            if kind == sys.REDRAW:
+            if kind == nav.REDRAW:
                 full = True
                 continue
-            if sys.is_back(ev):
+            if nav.is_back(ev):
                 return
             it = items[sel]
             if kind in (B.PRESS, B.REPEAT):
@@ -228,61 +285,57 @@ async def main(sys):
                     sel = (sel - 1) % len(items)
                 elif k == B.DOWN:
                     sel = (sel + 1) % len(items)
-                elif k in (B.LEFT, B.RIGHT) and it.tag == "auto":
-                    note = await _set_auto(sys, not it.value)
+                elif k in (B.LEFT, B.RIGHT) and kind == B.PRESS and it.tag == "auto":
+                    note = await _set_auto(nav, not it.value)
                     full = True
                 continue
             if k != B.A or kind != B.CLICK:
                 continue
             if it.tag == "auto":
-                r = await _set_auto(sys, not it.value)
+                note = await _set_auto(nav, not it.value)
             elif it.tag == "scan":
-                r = await _scan_screen(sys, 0)
+                note = await _scan_screen(nav, 0)
             elif it.tag == "chan":
-                r = await _scan_screen(sys, 1)
+                note = await _scan_screen(nav, 1)
             elif it.tag == "saved":
-                r = await _saved_screen(sys)
+                note = await _saved_screen(nav)
             elif it.tag == "sync":
-                r = await _sync(sys)
+                note = await _sync(nav)
             else:
-                r = await _disconnect(sys)
-            if r == "home":
-                return
-            note = r
+                note = await _disconnect(nav)
             full = True
     finally:
         if not net.connected() and net.status != "connecting":
             net.disable()
 
 
-async def _set_auto(sys, on):
+async def _set_auto(nav, on):
     """Toggles auto-connect; switching it on tries the saved networks right away."""
     settings.set("wifi_auto", on)
-    if not on or net.connected() or not settings.get("wifi"):
+    if not on or net.connected() or net.status == "connecting" or not settings.get("wifi"):
         return None
-    ui.toast_draw("Connessione automatica…")
-    sys.show()
-    if await net.auto_connect():
-        net.sync_time()
-        sys.notify("Connesso a " + net.ssid)
-        return None
-    return "Nessuna rete salvata qui intorno"
+    ok = await _wait_radio(nav, "Connessione automatica", "Reti salvate", net.auto_connect())
+    if ok:
+        await _joined(nav, net.ssid or "")
+    elif ok is not None:
+        return "Nessuna rete salvata raggiungibile"
+    return None
 
 
-async def _sync(sys):
+async def _sync(nav):
     if not net.connected():
-        await ui.dialog(sys, "Sincronizza ora", "Serve una connessione Wi-Fi.")
+        await ui.dialog(nav, "Sincronizza ora", "Serve una connessione Wi-Fi.")
         return None
     ui.toast_draw("Sincronizzazione…")
-    sys.show()
+    nav.show()
     if net.sync_time():
-        return "Ora sincronizzata: " + sys.clock_text()
+        return "Ora sincronizzata: " + nav.clock_text()
     return "Server dell'ora non raggiungibile"
 
 
-async def _disconnect(sys):
+async def _disconnect(nav):
     if settings.get("wifi_auto"):
-        c = await ui.dialog(sys, "Disconnetti", "Spengo anche la connessione automatica, "
+        c = await ui.dialog(nav, "Disconnetti", "Spengo anche la connessione automatica, "
                             "altrimenti il badge si ricollega da solo.", ("Ok", "Annulla"))
         if c != 0:
             return None
@@ -293,8 +346,8 @@ async def _disconnect(sys):
 
 # -- scan: network list and channel chart -------------------------------------------------
 
-def _scan_header(sys, tab):
-    ui.header(sys, TITLE, ICON)
+def _scan_header(nav, tab):
+    ui.header(nav, TITLE, ICON)
     for i, (label, x) in enumerate((("Reti", 214), ("Canali", 262))):
         gfx.text(label, x, 24, ui.TEXT if i == tab else ui.DIM)
         if i == tab:
@@ -302,26 +355,27 @@ def _scan_header(sys, tab):
 
 
 def _scan_footer(tab):
-    if tab == 0:
-        ui.footer([("A", "Connetti"), ("◄►", "Canali"), ("A tieni", "Indietro")])
-    else:
+    if tab == 1:
         ui.footer([("A", "Aggiorna"), ("◄►", "Reti"), ("A tieni", "Indietro")])
+    else:
+        ui.footer([("A", "Connetti" if _scan else "Cerca"), ("◄►", "Canali"),
+                   ("A tieni", "Indietro")])
 
 
-def _do_scan(sys, tab):
+def _do_scan(nav, tab):
     """Blocking scan behind a "searching" screen. Returns an error string or None."""
     global _scan
-    _scan_header(sys, tab)
+    _scan_header(nav, tab)
     icons.draw(gfx.fb, "wifi", W // 2 - 24, 82, 3)
     gfx.text("Ricerca reti…", W // 2, 144, ui.TEXT, align=1)
     gfx.text("ci vogliono un paio di secondi", W // 2, 166, ui.DIM, "small", align=1)
     ui.footer([])
-    sys.show()
+    nav.show()
     try:
         _scan = net.scan()
     except Exception as e:  # noqa: BLE001 - radio faults surface as OSError or RuntimeError
         _scan = []
-        _scan_header(sys, tab)
+        _scan_header(nav, tab)
         ui.footer([])
         return "Il Wi-Fi non risponde (%s). Riprova tra poco." % (e.args[-1] if e.args else
                                                                    type(e).__name__)
@@ -432,100 +486,104 @@ def _draw_channels():
              align=-1)
 
 
-async def _scan_screen(sys, tab):
-    err = _do_scan(sys, tab)
+async def _scan_screen(nav, tab):
+    err = _do_scan(nav, tab)
     if err:
-        await ui.dialog(sys, "Wi-Fi non disponibile", err)
+        await ui.dialog(nav, "Wi-Fi non disponibile", err)
         return None
     sel = top = 0
-    full = True
+    draw = full = True
     while True:
-        sel = min(sel, max(0, len(_scan) - 1))
-        if sel < top:
-            top = sel
-        elif sel >= top + NET_ROWS:
-            top = sel - NET_ROWS + 1
-        if full:
-            _scan_header(sys, tab)
-            _scan_footer(tab)
-            full = False
-        if tab == 0:
-            _draw_nets(sel, top)
-        else:
-            _draw_channels()
-        sys.show()
-        ev = await sys.event()
+        if draw:
+            sel = min(sel, max(0, len(_scan) - 1))
+            if sel < top:
+                top = sel
+            elif sel >= top + NET_ROWS:
+                top = sel - NET_ROWS + 1
+            if full:
+                _scan_header(nav, tab)
+                _scan_footer(tab)
+            if tab == 0:
+                _draw_nets(sel, top)
+            else:
+                _draw_channels()
+            if full:
+                nav.show()
+            else:
+                nav.show(52, ui.FOOTER_Y)
+            draw = full = False
+        ev = await nav.event()
         k, kind = B.key(ev), B.kind(ev)
-        if kind == sys.REDRAW:
-            full = True
-            continue
-        if sys.is_back(ev):
-            return "home" if kind == sys.HOME else None
-        if kind in (B.PRESS, B.REPEAT):
-            if k in (B.LEFT, B.RIGHT):
-                tab = 1 - tab
-                full = True
-            elif tab == 0 and _scan and k == B.UP:
-                sel = (sel - 1) % len(_scan)
-            elif tab == 0 and _scan and k == B.DOWN:
-                sel = (sel + 1) % len(_scan)
-            continue
-        if k != B.A or kind != B.CLICK:
-            continue
-        if tab == 1 or not _scan:
-            err = _do_scan(sys, tab)
-            if err:
-                await ui.dialog(sys, "Wi-Fi non disponibile", err)
-                return None
-            sel = top = 0
-            full = True
-            continue
-        ssid, _rssi, _ch, secure = _scan[sel]
-        if ssid == _current():
-            await ui.toast(sys, "Sei già connesso a " + ssid)
-        elif await _connect(sys, ssid, secure):
+        if kind == nav.REDRAW:
+            draw = full = True
+        elif nav.is_back(ev):
             return None
-        full = True
+        elif kind == B.PRESS and k in (B.LEFT, B.RIGHT):
+            tab = 1 - tab
+            draw = full = True
+        elif kind in (B.PRESS, B.REPEAT) and k in (B.UP, B.DOWN) and tab == 0 and _scan:
+            sel = (sel + (1 if k == B.DOWN else -1)) % len(_scan)
+            draw = True
+        elif k == B.A and kind == B.CLICK:
+            if tab == 1 or not _scan:
+                err = _do_scan(nav, tab)
+                if err:
+                    await ui.dialog(nav, "Wi-Fi non disponibile", err)
+                    return None
+                sel = top = 0
+            else:
+                ssid, _rssi, _ch, secure = _scan[sel]
+                if ssid == _current():
+                    await _toast(nav, "Sei già connesso a " + ssid)
+                elif await _connect(nav, ssid, secure):
+                    return None
+                if nav.home:
+                    return None
+            draw = full = True
 
 
 # -- connecting --------------------------------------------------------------------------
 
-def _join_screen(sys, ssid):
-    ui.header(sys, TITLE, ICON)
-    gfx.text("Connessione a", W // 2, 136, ui.DIM, align=1)
-    gfx.text(gfx.ellipsize(ssid, 296, "title"), W // 2, 154, ui.TEXT, "title", align=1)
+def _radio_screen(nav, label, name):
+    ui.header(nav, TITLE, ICON)
+    gfx.text(label, W // 2, 136, ui.DIM, align=1)
+    gfx.text(gfx.ellipsize(name, 296, "title"), W // 2, 154, ui.TEXT, "title", align=1)
     ui.footer([("A tieni", "Annulla")])
 
 
-async def _join(sys, ssid, pw):
-    """Connects with a progress animation. True, False, or None when cancelled."""
-    _join_screen(sys, ssid)
-    sys.show()
-    task = asyncio.create_task(net.connect(ssid, pw))
-    i = 0
-    while not task.done():
-        gfx.fill_rect(130, 76, 60, 50, ui.BG)
-        _bars(W // 2 - 22, 122, i % 5, 8, 4, 10, ui.CYAN)
-        sys.show(76, 126)
-        i += 1
-        ev = await sys.event(timeout_ms=250)
-        if ev is None:
-            continue
-        if B.kind(ev) == sys.REDRAW:
-            _join_screen(sys, ssid)
-            sys.show()
-        elif sys.is_back(ev):
-            task.cancel()
-            net.disable()
-            return None
+async def _attempt(coro):
     try:
-        return await task
+        return await coro
     except Exception:  # noqa: BLE001 - a radio error is a failed attempt
         return False
 
 
-def _joined_screen(sys, ssid, synced):
-    ui.header(sys, TITLE, ICON)
+async def _wait_radio(nav, label, name, coro):
+    """Runs a connection coroutine behind an animation: True, False, or None if cancelled."""
+    _radio_screen(nav, label, name)
+    nav.show()
+    task = asyncio.create_task(_attempt(coro))
+    t0 = time.ticks_ms()
+    while not task.done():
+        gfx.fill_rect(130, 76, 60, 50, ui.BG)
+        _bars(W // 2 - 22, 122, time.ticks_diff(time.ticks_ms(), t0) // 250 % 5, 8, 4, 10,
+              ui.CYAN)
+        nav.show(76, 126)
+        ev = await nav.event(timeout_ms=250)
+        if ev is None:
+            continue
+        if B.kind(ev) == nav.REDRAW:
+            _radio_screen(nav, label, name)
+            nav.show()
+        elif nav.is_back(ev):
+            task.cancel()
+            net.disable()
+            return None
+    return await task
+
+
+def _joined_screen(nav, ssid, synced):
+    ui.header(nav, TITLE, ICON)
     gfx.circle(W // 2, 100, 24, ui.GREEN, True)
     for d in range(3):
         gfx.line(W // 2 - 11, 99 + d, W // 2 - 4, 106 + d, ui.BG)
@@ -533,69 +591,94 @@ def _joined_screen(sys, ssid, synced):
     gfx.text("Connesso a", W // 2, 134, ui.DIM, align=1)
     gfx.text(gfx.ellipsize(ssid, 296, "title"), W // 2, 152, ui.TEXT, "title", align=1)
     gfx.text(net.ip() or "", W // 2, 180, ui.CYAN, align=1)
-    gfx.text("ora sincronizzata" if synced else "ora non sincronizzata", W // 2, 200,
-             ui.DIM if synced else ui.ORANGE, "small", align=1)
+    if synced is None:
+        msg, c = "sincronizzazione dell'ora", ui.DIM
+    elif synced:
+        msg, c = "ora sincronizzata", ui.DIM
+    else:
+        msg, c = "ora non sincronizzata", ui.ORANGE
+    gfx.text(msg, W // 2, 200, c, "small", align=1)
     ui.footer([])
-    sys.show()
+    nav.show()
 
 
-async def _connect(sys, ssid, secure):
-    """Saved password, the keyboard, or none for open networks. True once connected."""
+async def _joined(nav, ssid):
+    """The connected screen while the clock syncs, then the LED flash and chime."""
+    _joined_screen(nav, ssid, None)
+    synced = net.sync_time()
+    _joined_screen(nav, ssid, synced)
+    nav.notify("Connesso a " + ssid)
+    await _linger(nav, 1500)
+
+
+async def _password(nav, ssid, text=""):
+    """The keyboard until something is typed; None when cancelled."""
     title = gfx.ellipsize("Password " + ssid, 296, "title")
+    while not nav.home:
+        pw = await ui.keyboard(nav, title, text=text, secret=True)
+        if pw or pw is None:
+            return pw
+        await _toast(nav, "La rete è protetta: serve la password")
+    return None
+
+
+async def _connect(nav, ssid, secure):
+    """Saved password, the keyboard, or none for open networks. True once connected."""
     pw = _saved().get(ssid)
     if pw is None:
         pw = ""
         if secure:
-            pw = await ui.keyboard(sys, title, secret=True)
+            pw = await _password(nav, ssid)
             if pw is None:
                 return False
     while True:
-        ok = await _join(sys, ssid, pw)
-        if ok is None:
-            return False
+        ok = await _wait_radio(nav, "Connessione a", ssid, net.connect(ssid, pw))
         if ok:
             net.remember(ssid, pw)
-            _joined_screen(sys, ssid, False)
-            synced = net.sync_time()
-            _joined_screen(sys, ssid, synced)
-            sys.notify("Connesso a " + ssid)
-            await sys.sleep_ms(1500, interruptible=True)
+            await _joined(nav, ssid)
             return True
+        if ok is None:
+            return False
+        ui.header(nav, TITLE, ICON)
+        ui.footer([])
         msg = "Password errata o rete troppo lontana." if pw else "La rete non risponde."
-        if await ui.dialog(sys, "Connessione fallita", msg, ("Riprova", "Annulla")) != 0:
+        if await ui.dialog(nav, "Connessione fallita", msg, ("Riprova", "Annulla")) != 0:
             return False
         if pw:
-            pw = await ui.keyboard(sys, title, text=pw, secret=True)
+            pw = await _password(nav, ssid, pw)
             if pw is None:
                 return False
 
 
 # -- saved networks ----------------------------------------------------------------------
 
-async def _saved_screen(sys):
+async def _saved_screen(nav):
     sel = 0
-    while True:
+    while not nav.home:
         nets = settings.get("wifi")
         if not nets:
-            await ui.dialog(sys, "Reti salvate", "Nessuna rete salvata. Collegati da Cerca reti: "
+            ui.header(nav, "Reti salvate", "wf_saved")
+            ui.footer([])
+            await ui.dialog(nav, "Reti salvate", "Nessuna rete salvata. Collegati da Cerca reti: "
                             "la password viene ricordata.")
             return None
         cur = _current()
         items = [ui.Item(n[0], "connessa" if n[0] == cur else None if n[1] else "aperta",
                          "wifi", tag=n[0]) for n in nets]
-        it = await ui.menu(sys, "Reti salvate", items, icon="wf_saved", sel=sel,
+        it = await ui.menu(nav, "Reti salvate", items, icon="wf_saved", sel=sel,
                            hints=[("A", "Opzioni"), ("A tieni", "Indietro")])
         if it is None:
-            return "home" if sys.pending_app() else None
+            return None
         sel = items.index(it)
         name = gfx.ellipsize(it.tag, 264)
         if it.tag == cur:
-            if await ui.dialog(sys, name, "Connessa ora. Dimenticarla? La connessione resta "
+            if await ui.dialog(nav, name, "Connessa ora. Dimenticarla? La connessione resta "
                                "attiva.", ("Dimentica", "Annulla")) == 0:
                 net.forget(it.tag)
             continue
-        c = await ui.dialog(sys, name, "Rete salvata", ("Connetti", "Dimentica"))
-        if c == 0 and await _connect(sys, it.tag, True):
+        c = await ui.dialog(nav, name, "Rete salvata", ("Connetti", "Dimentica"))
+        if c == 0 and await _connect(nav, it.tag, True):
             return None
         if c == 1:
             net.forget(it.tag)
+    return None

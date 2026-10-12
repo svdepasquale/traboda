@@ -30,6 +30,14 @@ GO_FG = rgb(4, 44, 20)
 FOUL_BG = rgb(196, 92, 0)
 BLACK = (0, 0, 0)
 INTRO_LEDS = [(120, 0, 0) if p % 11 < 4 else (120, 90, 0) if p % 11 < 7 else (0, 120, 40) for p in range(22)]
+GO_LEDS = [(0, 255, 70)] * 22
+FOUL_LEDS = [(255, 40, 0)] * 22
+OFF_LEDS = [BLACK] * 22
+GOLD_LEDS = [(255, 214, 10)] * 22
+INTRO_HINTS = [("A", "Inizia"), ("A tieni", "Esci")]
+COUNT_HINTS = [("►‖", "Pausa")]
+PLAY_HINTS = [("A", "Premi al verde"), ("►‖", "Pausa")]
+NEXT_HINTS = [("A", "Continua"), ("►‖", "Pausa")]
 # (under ms, verdict, screen colour, LED colour)
 RATINGS = (
     (200, "Fulmine!", ui.CYAN, (45, 226, 230)),
@@ -94,7 +102,7 @@ class Reaction:
         self.round = 1
         self.n = 3
         self.panel = self.p_intro
-        self.hints = [("A", "Inizia"), ("A tieni", "Esci")]
+        self.hints = INTRO_HINTS
         self.go_img = _render_go()
 
     # -- drawing -----------------------------------------------------------------------
@@ -123,16 +131,18 @@ class Reaction:
             else:
                 gfx.text("--", x + 28, CHIP_Y + 14, ui.LINE, align=1)
 
-    def show(self, panel, hints=None):
-        """Switches the big panel (and the footer hints) and pushes them."""
+    def show(self, panel):
+        """Switches the big panel and pushes it."""
         self.panel = panel
         panel()
-        if hints and hints != self.hints:
-            self.hints = hints
-            ui.footer(hints)
-            self.sys.show(PY, 240)
-        else:
-            self.sys.show(PY, PY + PH)
+        self.sys.show(PY, PY + PH)
+
+    def show_all(self, panel, hints):
+        """Switches the panel and the hints and repaints everything (HUD and chips too)."""
+        self.panel = panel
+        self.hints = hints
+        self.draw()
+        self.sys.show()
 
     def p_intro(self):
         _panel(ui.PANEL)
@@ -213,7 +223,8 @@ class Reaction:
         return None
 
     async def hold(self, ms, skip_after=None):
-        """Waits ms; a key press after skip_after ms ends it early. Returns "quit" or None."""
+        """Waits ms; a key press after skip_after ms ends it early. Returns "quit", "pause"
+        or None."""
         sys = self.sys
         t0 = time.ticks_ms()
         while True:
@@ -223,22 +234,21 @@ class Reaction:
             ev = await sys.event(timeout_ms=ms - el)
             if ev is None:
                 continue
-            kind = B.kind(ev)
-            if kind == sys.HOME:
-                return "quit"
-            if kind == sys.REDRAW:
-                self.draw()
-                sys.show()
-            elif kind == B.PRESS and skip_after is not None \
+            r = self.check(ev)
+            if r:
+                return r
+            if B.kind(ev) == B.PRESS and skip_after is not None \
                     and time.ticks_diff(time.ticks_ms(), t0) >= skip_after:
                 return None
 
     async def wait_click(self):
-        """Until A (or back): "quit" only on HOME."""
+        """Until A is pressed and released here (the release of the key that skipped the
+        last result must not skip the summary too): None, "back" on back, "quit" on HOME."""
         sys = self.sys
+        pressed = False
         while True:
             ev = await sys.event()
-            kind = B.kind(ev)
+            k, kind = B.key(ev), B.kind(ev)
             if kind == sys.HOME:
                 return "quit"
             if kind == sys.REDRAW:
@@ -246,24 +256,31 @@ class Reaction:
                 sys.show()
             elif sys.is_back(ev):
                 return "back"
-            elif B.key(ev) == B.A and kind == B.CLICK:
+            elif k == B.A and kind == B.PRESS:
+                pressed = True
+            elif k == B.A and kind == B.CLICK and pressed:
                 return None
 
     async def countdown(self):
+        """3, 2, 1 before the first round and after a pause: "quit", "pause" or None."""
         for n in (3, 2, 1):
             self.n = n
-            self.show(self.p_count, [("▶", "Pausa")])
+            if n == 3:
+                self.show_all(self.p_count, COUNT_HINTS)
+            else:
+                self.show(self.p_count)
             h = (1, 3, 5)[n - 1]
             common.leds_frame(self.sys, _strip((255, 190, 0), range(5 - h, 6 + h)))
             common.sfx(self.sys, "tick")
-            if await self.hold(550) == "quit":
-                return "quit"
+            r = await self.hold(550)
+            if r:
+                return r
         return None
 
     async def wait_phase(self):
         """Red until a random moment: "go", "foul", "pause" or "quit"."""
         sys = self.sys
-        self.show(self.p_wait, [("A", "Premi al verde"), ("▶", "Pausa")])
+        self.show_all(self.p_wait, PLAY_HINTS)
         delay = random.randrange(1500, 5001)
         t0 = time.ticks_ms()
         while True:
@@ -282,13 +299,15 @@ class Reaction:
                 return "foul"
 
     async def go_phase(self):
-        """Green: the reaction time in ms, "foul", "slow", "pause" or "quit"."""
+        """Green: the reaction time in ms, "foul", "slow", "pause" or "quit". REDRAW is
+        left alone: repainting here would add its time to the measure, and the next
+        screen repaints anyway."""
         sys = self.sys
         self.panel = self.p_go
         self.p_go()
         sys.show(PY, PY + PH)
         t0 = time.ticks_us()
-        common.leds_frame(sys, [(0, 255, 70)] * 22)
+        common.leds_frame(sys, GO_LEDS)
         while True:
             ev = sys.poll_event()
             if ev is None:
@@ -297,10 +316,12 @@ class Reaction:
                 await asyncio.sleep_ms(1)
                 continue
             ms = time.ticks_diff(time.ticks_us(), t0) // 1000
-            r = self.check(ev)
-            if r:
-                return r
-            if B.kind(ev) == B.PRESS:
+            kind = B.kind(ev)
+            if kind == sys.HOME:
+                return "quit"
+            if common.wants_pause(ev):
+                return "pause"
+            if kind == B.PRESS:
                 return ms if ms >= ANTICIPATION_MS else "foul"
 
     async def play_round(self):
@@ -314,23 +335,21 @@ class Reaction:
             if r == "foul":
                 self.fouls += 1
                 self.show(self.p_foul)
-                common.leds_frame(sys, [(255, 40, 0)] * 22)
-                common.leds_flash(sys, (255, 0, 0), 600)
+                common.leds_frame(sys, FOUL_LEDS)
                 common.sfx(sys, "hit")
                 r = await self.hold(1600)
             elif r == "slow":
                 self.show(self.p_slow)
-                common.leds_frame(sys, [BLACK] * 22)
+                common.leds_frame(sys, OFF_LEDS)
                 r = await self.hold(1400)
             if r is not None:
                 return r
 
     async def result(self, ms):
+        """The time just made: None after a while (or a key), "pause" or "quit"."""
         sys = self.sys
         r = _rating(ms)
-        self.panel = self.p_result
-        self.draw()
-        sys.show()
+        self.show_all(self.p_result, NEXT_HINTS)
         n = max(1, min(11, (650 - ms) * 11 // 450))
         common.leds_frame(sys, _strip(r[3], range(n)))
         common.sfx(sys, "eat" if ms < 250 else "bounce" if ms < 420 else "hit")
@@ -343,12 +362,11 @@ class Reaction:
         if self.record:
             self.best = avg
             settings.set(BEST_KEY, avg)
-        self.panel = self.p_summary
-        self.hints = [("A", "Continua")]
-        self.draw()
-        sys.show()
+        self.show_all(self.p_summary, [("A", "Continua")])
         if self.record:
-            common.leds_flash(sys, (255, 214, 10), 900)
+            common.leds_frame(sys, GOLD_LEDS)
+            if await self.hold(900, skip_after=0) == "quit":
+                return "quit"
         common.leds_frame(sys, [_rating(self.times[i // 2])[3] if i % 2 else BLACK
                                 for i in range(11)] * 2)
         if await self.wait_click() == "quit":
@@ -356,33 +374,33 @@ class Reaction:
         return await common.game_over(sys, GAME_ID, TITLE, self.score())
 
 
-async def _game(sys):
+async def _game(sys, intro):
+    """One game of ROUNDS tries; the intro screen only before the first one."""
     g = Reaction(sys)
-    g.draw()
-    sys.show()
-    common.leds_frame(sys, INTRO_LEDS)
-    if await g.wait_click():
-        return "quit"
-    if await g.countdown():
-        return "quit"
-    while len(g.times) < ROUNDS:
-        r = await g.play_round()
-        if r == "quit":
+    if intro:
+        g.draw()
+        sys.show()
+        common.leds_frame(sys, INTRO_LEDS)
+        if await g.wait_click():
             return "quit"
+    r = await g.countdown()
+    while r != "quit":
         if r == "pause":
             choice = await common.pause_menu(sys, TITLE)
             if choice != "resume":
                 return choice
-            g.draw()
-            sys.show()
+            r = None if len(g.times) == ROUNDS else await g.countdown()
             continue
-        g.times.append(r)
-        if await g.result(r) == "quit":
-            return "quit"
-    return await g.finish()
+        if len(g.times) == ROUNDS:
+            return await g.finish()
+        r = await g.play_round()
+        if isinstance(r, int):
+            g.times.append(r)
+            r = await g.result(r)
+    return "quit"
 
 
 async def main(sys):
-    while True:
-        if await _game(sys) != "restart":
-            return
+    intro = True
+    while await _game(sys, intro) == "restart":
+        intro = False

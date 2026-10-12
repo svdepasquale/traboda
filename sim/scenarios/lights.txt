@@ -1,0 +1,10 @@
+# Main screen: effect, colour, brightness and speed with left/right; the preview follows.
+wait:700,snap:main,key:down,key:right,key:down,key:right,key:down,key:right,key:down,key:right,wait:300,snap:cambiati
+# LEDs off and on again with A on the first row.
+wait:700,key:A,wait:300,snap:spenti,key:A,wait:300,snap:accesi
+# Palette: move, pick a preset, back on the main screen.
+wait:700,key:down,key:down,key:A,wait:400,snap:tavolozza,key:right,key:down,wait:300,snap:mossa,key:A,wait:400,snap:scelto
+# Custom colour picker: move the cursor, choose; then A held leaves the app.
+wait:700,key:down,key:down,key:A,wait:400,key:up,key:A,wait:400,snap:picker,key:left,key:up,wait:300,snap:mosso,key:A,wait:400,snap:scelto,hold:A,wait:500,snap:home
+# Torch on, any key turns it off, A held leaves.
+wait:700,key:up,key:A,wait:400,snap:torcia,key:A,wait:400,snap:spenta,hold:A,wait:500,snap:home

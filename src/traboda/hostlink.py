@@ -10,6 +10,7 @@ the OS and drops to the REPL. tools/badgectl.py speaks this protocol:
   @@TRB toast <text>          show a notification (with an LED flash)
   @@TRB stats <json>          data for the Companion app (CPU, RAM, battery, track...)
   @@TRB app <name>            open an app
+  @@TRB wifi <json>           {"ssid": ..., "password": ...}: save and join a network
 """
 
 import binascii
@@ -76,6 +77,15 @@ class HostLink:
                 pass
         elif name == "app":
             s.request_app(arg.strip())
+        elif name == "wifi":
+            try:
+                cfg = json.loads(arg)
+                from . import net
+                net.remember(cfg["ssid"], cfg.get("password", ""))
+                s.kick_wifi()
+                print("@@OK")
+            except (ValueError, KeyError):
+                print("@@ERR")
 
     def snap(self):
         buf = self.sys.display.buf

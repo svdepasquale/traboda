@@ -1,0 +1,8 @@
+# Keyboard: notes through the expander (press, release), the fading echo, A held leaves.
+app:synth,wait:800,snap:kb,down:up,wait:60,snap:note,up:up,wait:500,down:play,wait:60,up:play,wait:100,snap:echo,hold:A,wait:500,snap:home
+# Menu (next held): scale, octave, volume; A held closes it, A held again leaves.
+app:synth,wait:800,hold:next,wait:200,snap:menu,key:down,key:right,key:down,key:right,key:down,key:down,key:left,wait:200,snap:changed,hold:A,wait:300,snap:kb,hold:A,wait:500,snap:home
+# Sequencer: edit and switch off a step, play, stop, random pattern from the menu, HOME.
+app:synth,wait:800,hold:next,wait:200,key:right,key:A,wait:300,key:right,key:up,key:A,wait:200,snap:edit,key:next,wait:600,snap:play,key:play,wait:200,hold:next,wait:200,key:up,key:up,key:A,wait:300,snap:random,hold:B,wait:500,snap:home
+# Music playing: the synth pauses it ("Musica in pausa") and resumes it on exit.
+app:synth,wait:300,app:music,wait:800,key:A,wait:300,app:synth,wait:400,snap:toast,wait:1300,hold:A,wait:500,snap:home

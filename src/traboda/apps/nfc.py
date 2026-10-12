@@ -3,8 +3,12 @@ NTAG/Ultralight tags and keep an archive of dumps on the badge.
 
 The reader lives on the display's SPI bus and is held in power-down until the app runs
 (power.rfid). The idle screen polls a few times a second, yielding between polls so the
-UI stays live and back works. READER_FACTORY lets the simulator inject a fake reader.
+UI stays live and back works, and parks the reader (power.rfid off) while the screen
+sleeps so a dark badge neither keeps the RF field up nor reads cards. READER_FACTORY
+lets the simulator inject a fake reader.
 """
+
+import asyncio
 
 from .. import buttons as B
 from .. import gfx, icons, paths, settings, ui
@@ -255,6 +259,7 @@ async def _read_classic(sys, reader, uid):
     gfx.text("Lettura settori", 160, 92, ui.CYAN, "title", align=1)
     ui.footer([("A tieni", "Indietro")])
     sys.show()
+    reader.halt()                      # the card is ACTIVE from _poll: halt so WUPA can re-select
     opened = []
     key0 = None
     for sector in range(16):
@@ -265,9 +270,10 @@ async def _read_classic(sys, reader, uid):
                 break
             if reader.auth(AUTH_A, trailer, key, uid):
                 found = key
-                reader.stop_crypto()
+                reader.halt()          # HLTA (encrypted while crypto is on) drops the card to HALT
                 break
-            reader.stop_crypto()
+            reader.halt()
+            await asyncio.sleep_ms(0)  # yield: a wrong-key auth waits the chip's ~15 ms timer
         opened.append(found is not None)
         if sector == 0 and found is not None:
             key0 = found
@@ -278,7 +284,7 @@ async def _read_classic(sys, reader, uid):
     if key0 is not None and reader.request() and reader.select():
         if reader.auth(AUTH_A, 0, key0, uid):
             block0 = reader.read_block(0)
-            reader.stop_crypto()
+            reader.halt()
     return opened, block0
 
 
@@ -291,7 +297,8 @@ async def read_card(sys, reader, uid, sak, atqa):
         info["ver"] = _hex(gv, "")
     if kind in ("ntag", "ul"):
         _draw_loading(sys, "Lettura dati")
-        reader.request()               # GET_VERSION may mute a plain Ultralight: re-activate
+        reader.halt()                  # GET_VERSION leaves the tag ACTIVE or muted: re-activate
+        reader.request()
         reader.select()
         raw, size = await _read_ntag(sys, reader)
         info["size"] = size
@@ -393,13 +400,13 @@ def _draw_idle_static(sys, reader):
 
 
 def _draw_ring(sys, frame):
-    gfx.fill_rect(0, 44, 320, 112, ui.BG)
+    gfx.fill_rect(0, 46, 320, 110, ui.BG)   # leaves the header accent bar (y 44-45) intact
     cx, cy = 160, 100
     for i in range(3):
         r = 22 + ((frame * 2 + i * 10) % 30)
         gfx.circle(cx, cy, r, ui.CYAN if r < 40 else ui.LINE)
     icons.draw(gfx.fb, "nfc", cx - 24, cy - 24, 3)
-    sys.show(44, 156)
+    sys.show(46, 156)
 
 
 async def _idle_loop(sys, reader):
@@ -407,14 +414,36 @@ async def _idle_loop(sys, reader):
     empty = 0
     frame = 0
     full = True
+    powered = reader is not None
     while True:
+        if not sys.screen_on:               # screen asleep: drop the RF field, stop polling
+            if powered:
+                try:
+                    sys.power.rfid(False)
+                except Exception:  # noqa: BLE001
+                    pass
+                powered = False
+            ev = await sys.event(timeout_ms=500)
+            if ev is not None and sys.is_back(ev):
+                return
+            full = True                     # redraw once the screen comes back
+            continue
+        if reader is not None and not powered:   # woke up: bring the reader back
+            try:
+                sys.power.rfid(True)
+                reader.init()
+                powered = True
+            except Exception:  # noqa: BLE001
+                powered = False
+            last_uid = None
+            empty = 0
         if full:
             _draw_idle_static(sys, reader)
             sys.show()
             full = False
         _draw_ring(sys, frame)
         frame += 1
-        if reader is not None:
+        if reader is not None and powered:
             card = _poll(reader)
             if card is None:
                 empty += 1
@@ -542,6 +571,7 @@ async def write_flow(sys, reader, info, make_record, prompt, default):
 
 async def _verify(sys, reader, text):
     """Re-read the tag and return the records when the first one contains text, else None."""
+    reader.halt()                       # the tag is ACTIVE after the writes: halt so WUPA re-selects
     if reader.request() is None or reader.select() is None:
         return None
     raw = bytearray()

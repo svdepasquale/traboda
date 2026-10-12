@@ -144,7 +144,7 @@ def _draw(style, nick, tagline):
         for i in range(-8, 9):
             gfx.line(160 + i * 14, 158, 160 + i * 64, 221, _GRID)
         gfx.hline(0, 158, 320, ui.ACCENT)
-        _name(nick, 74, ui.CYAN, 300, 96, ui.ACCENT)
+        _name(nick, 70, ui.CYAN, 300, 96, ui.ACCENT)
         _tagline(tag, 137, ui.YELLOW)
     else:
         tag = _tag_lines(tagline)
@@ -184,6 +184,7 @@ async def _show(sys):
     loop = ""
     width = 0
     clock = None
+    clock_due = last
     while True:
         now = time.ticks_ms()
         sys.buttons.last_activity = now         # a name tag never dims
@@ -197,6 +198,7 @@ async def _show(sys):
             _draw(style, settings.get("nickname"), settings.get("tagline"))
             ui.statusbar(sys)
             clock = sys.clock_text()
+            clock_due = time.ticks_add(now, 1000)
         expired = hints and time.ticks_diff(now, hints_until) >= 0
         if expired:
             hints = False
@@ -216,10 +218,12 @@ async def _show(sys):
             else:
                 sys.show(ui.FOOTER_Y, 240)
         full = False
-        if sys.clock_text() != clock:
-            clock = sys.clock_text()
-            ui.statusbar(sys)
-            sys.show(0, ui.STATUS_H)
+        if time.ticks_diff(now, clock_due) >= 0:
+            clock_due = time.ticks_add(now, 1000)
+            if sys.clock_text() != clock:
+                clock = sys.clock_text()
+                ui.statusbar(sys)
+                sys.show(0, ui.STATUS_H)
         last = now
         ev = await sys.event(timeout_ms=40)
         if ev is None:
@@ -238,7 +242,7 @@ async def _show(sys):
             continue
         if k in (B.LEFT, B.RIGHT):
             style = (style + (1 if k == B.RIGHT else -1)) % len(STYLES)
-            settings.set("badge_style", style)
+            settings.set("badge_style", style, False)       # saved on the way out
             full = True
         hints = True
         hints_until = time.ticks_add(time.ticks_ms(), HINT_MS)
@@ -289,6 +293,7 @@ async def _type(sys, tag):
 async def _edit(sys):
     sel = 0
     full = True
+    changed = True
     y0 = 0
     try:
         while True:
@@ -296,9 +301,13 @@ async def _edit(sys):
             if full:
                 y0 = ui.header(sys, "Modifica badge", ICON)
                 ui.footer([("A", "Modifica"), ("◄►", "Cambia"), ("A tieni", "Fine")])
-                full = False
-            ui.draw_list(items, sel, 0, y0, len(items))
-            sys.show()
+            if full or changed:
+                ui.draw_list(items, sel, 0, y0, len(items))
+                if full:
+                    sys.show()
+                else:
+                    sys.show(y0, y0 + len(items) * ui.ROW_H)
+                full = changed = False
             ev = await sys.event()
             if ev is None:
                 continue
@@ -314,20 +323,26 @@ async def _edit(sys):
             if k == B.A and kind == B.CLICK:
                 if it.kind:
                     _adjust(sys, it, 1)
+                    changed = True
                 else:
                     await _type(sys, it.tag)
                     full = True
             elif kind in (B.PRESS, B.REPEAT):
                 if k in (B.UP, B.DOWN):
                     sel = (sel + (1 if k == B.DOWN else -1)) % len(items)
+                    changed = True
                 elif k in (B.LEFT, B.RIGHT) and it.kind:
                     _adjust(sys, it, 1 if k == B.RIGHT else -1)
+                    changed = True
     finally:
         settings.save()
 
 
 async def main(sys):
+    style = settings.get("badge_style", 0)
     try:
         await _show(sys)
     finally:
         _restore_leds(sys)
+        if settings.get("badge_style", 0) != style:
+            settings.save()

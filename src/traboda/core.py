@@ -68,6 +68,8 @@ class System:
         self._redraw = False
         self._quick = False
         self._toast = None
+        self._home = False           # HOME latched until the app returns
+        self._wifi_kick = False
         self._last_status = 0
         self._started = time.ticks_ms()
         from .hostlink import HostLink
@@ -87,6 +89,7 @@ class System:
         leds = Leds()
         leds.level = settings.get("led_brightness") / 100
         leds.color = tuple(settings.get("led_color"))
+        leds.speed = settings.get("led_speed", 1.0)
         if settings.get("leds_on"):
             leds.set_effect(settings.get("led_effect"))
         return leds
@@ -94,9 +97,18 @@ class System:
     # -- small helpers for apps -------------------------------------------------------------
 
     def show(self, y0=0, y1=240):
+        if self._toast:
+            ty0, ty1 = ui.toast_draw(self._toast[0])
+            if y1 <= y0:
+                y0, y1 = ty0, ty1
+            else:
+                y0, y1 = min(y0, ty0), max(y1, ty1)
         self.display.show(y0, y1)
 
     def show_rect(self, x, y, w, h):
+        if self._toast:
+            ty0, ty1 = ui.toast_draw(self._toast[0])
+            self.display.show(ty0, ty1)
         self.display.show_rect(x, y, w, h)
 
     def clock_text(self):
@@ -108,6 +120,10 @@ class System:
     def wifi_connected(self):
         from . import net
         return net.connected()
+
+    def leaving(self):
+        """True once HOME was raised: nested screens should return without asking."""
+        return self._home
 
     def is_back(self, ev):
         """B pressed, A held, or HOME. A-held keeps every badge usable: on some units the
@@ -125,6 +141,8 @@ class System:
 
     def notify(self, text, color=(45, 226, 230)):
         self._toast = (text, time.ticks_add(time.ticks_ms(), 2500))
+        if self.screen_on:
+            self.show(0, 0)
         if self.leds:
             self.leds.flash(color, 900)
         if settings.get("clicks"):
@@ -153,16 +171,32 @@ class System:
         t0 = time.ticks_ms()
         while time.ticks_diff(time.ticks_ms(), t0) < ms:
             if interruptible and any(B.kind(e) == B.PRESS for e in self.buttons.queue):
+                self.absorb_keys()
                 return True
             await asyncio.sleep_ms(15)
         return False
 
+    def absorb_keys(self):
+        """Drops queued presses and swallows the rest of those keys (up to RELEASE), so a
+        tap that dismissed something does not also act on the screen underneath."""
+        q = self.buttons.queue
+        for ev in q:
+            if B.kind(ev) == B.PRESS:
+                self._swallow |= 1 << B.key(ev)
+        q[:] = [ev for ev in q if not self._swallow >> B.key(ev) & 1]
+        self._swallow &= self.buttons.state
+
     # -- events -----------------------------------------------------------------------------
 
     async def event(self, timeout_ms=None):
-        """Next key event (int, see buttons), HOME/REDRAW, or None after timeout_ms."""
+        """Next key event (int, see buttons), HOME/REDRAW, or None after timeout_ms.
+        After a HOME every call returns HOME again until the app returns, so nested
+        menus and dialogs all unwind."""
         t0 = time.ticks_ms()
         while True:
+            if self._home:
+                await asyncio.sleep_ms(0)
+                return HOME << 4 | B.B
             if self._quick:
                 self._quick = False
                 await self.quick_panel()
@@ -174,6 +208,8 @@ class System:
             if ev is not None:
                 return ev
             if self._requested_app:
+                if self.app_name != "home":
+                    self._home = True
                 return HOME << 4 | B.B
             if timeout_ms is not None and time.ticks_diff(time.ticks_ms(), t0) >= timeout_ms:
                 return None
@@ -181,10 +217,14 @@ class System:
 
     def poll_event(self):
         """Next event without waiting, or None (game loops drain these each frame)."""
+        if self._home:
+            return HOME << 4 | B.B
         if self._redraw:
             self._redraw = False
             return REDRAW << 4
         if self._requested_app:
+            if self.app_name != "home":
+                self._home = True
             return HOME << 4 | B.B
         return self._next_event()
 
@@ -201,6 +241,8 @@ class System:
             if kind == B.LONG:
                 self._held_long |= m
                 if k == B.B:
+                    if self.app_name != "home":
+                        self._home = True
                     return HOME << 4 | B.B
                 if k == B.PLAY and not self.claim_media:
                     self._quick = True
@@ -234,8 +276,8 @@ class System:
     # -- services -------------------------------------------------------------------------
 
     async def _input_task(self):
-        sleep_after = settings.get("sleep_after")
         while True:
+            sleep_after = settings.get("sleep_after")
             try:
                 active = self.buttons.scan()
                 if not self.screen_on and active:
@@ -278,6 +320,7 @@ class System:
         while True:
             try:
                 self.player.tick()
+                self.audio.idle_check()
                 if n % 60 == 0:
                     self.battery = self.power.battery_percent()
                 if n % 10 == 0:
@@ -290,18 +333,34 @@ class System:
             n += 1
             await asyncio.sleep_ms(500)
 
+    def kick_wifi(self):
+        """Ask the Wi-Fi service to try the saved networks now."""
+        self._wifi_kick = True
+
     async def _wifi_task(self):
+        """Joins saved networks without blocking scans; backs off 1 -> 10 min when none
+        is in range, and re-syncs the clock every 6 h."""
         from . import net
-        if not settings.get("wifi_auto") or not settings.get("wifi"):
-            return
+        wait = 60
         while True:
-            if not net.connected():
-                if await net.auto_connect():
+            try:
+                if settings.get("wifi_auto") and settings.get("wifi") and not net.connected():
+                    if await net.auto_connect(use_scan=False):
+                        wait = 60
+                        if net.sync_time():
+                            self._redraw = True
+                    else:
+                        wait = min(600, wait * 2)
+                elif net.connected() and time.time() - net.last_sync > 6 * 3600:
                     net.sync_time()
-                    self._redraw = True
-            elif time.time() - net.last_sync > 6 * 3600:
-                net.sync_time()
-            await asyncio.sleep(60)
+            except Exception as e:  # noqa: BLE001 - the radio must not kill the service
+                self.errors.append("wifi: %s" % e)
+                wait = min(600, wait * 2)
+            for _ in range(wait):
+                if self._wifi_kick:
+                    break
+                await asyncio.sleep(1)
+            self._wifi_kick = False
 
     def mount_sd(self):
         if self.sd_mounted:
@@ -325,13 +384,14 @@ class System:
     # -- quick panel ----------------------------------------------------------------------
 
     async def quick_panel(self):
-        from .leds import EFFECTS
+        from .leds import EFFECT_NAMES, EFFECTS
+        by_name = {v: k for k, v in EFFECT_NAMES.items()}
         items = [
             ui.Item("Volume", self.audio.volume, "music", "slider", step=5),
             ui.Item("Luminosità", self.display.brightness, "lights", "slider", step=10, lo=5),
             ui.Item("LED", settings.get("leds_on"), "lights", "toggle"),
-            ui.Item("Effetto LED", settings.get("led_effect"), "lights", "choice",
-                    choices=list(EFFECTS[1:])),
+            ui.Item("Effetto LED", EFFECT_NAMES.get(settings.get("led_effect"), "Arcobaleno"),
+                    "lights", "choice", choices=[EFFECT_NAMES[e] for e in EFFECTS[1:]]),
             ui.Item("Altoparlante", self.audio.speaker_enabled, "music", "toggle"),
             ui.Item("Standby", None, "power", tag="standby"),
         ]
@@ -347,9 +407,10 @@ class System:
                 settings.set("leds_on", it.value, False)
                 self.leds.set_effect(settings.get("led_effect") if it.value else "off")
             elif it.label == "Effetto LED" and self.leds:
-                settings.set("led_effect", it.value, False)
+                effect = by_name.get(it.value, "rainbow")
+                settings.set("led_effect", effect, False)
                 settings.set("leds_on", True, False)
-                self.leds.set_effect(it.value)
+                self.leds.set_effect(effect)
             elif it.label == "Altoparlante":
                 self.audio.set_speaker(it.value)
                 settings.set("speaker", it.value, False)
@@ -391,6 +452,7 @@ class System:
         finally:
             self.claim_media = False
             self.app_name = None
+            self._home = False
             if self.leds:
                 self.leds.progress = None
             if name != "home" and modname in sys.modules:

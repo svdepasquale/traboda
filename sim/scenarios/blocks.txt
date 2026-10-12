@@ -1,0 +1,8 @@
+# Move, rotate with up and A, soft drop, hard drop on next.
+wait:1100,snap:play,key:left,key:up,key:A,wait:200,snap:rotated,key:down,key:down,key:next,wait:300,snap:dropped
+# Pause and resume; pause and Esci back to the games list.
+wait:1100,key:play,wait:300,snap:pause,key:A,wait:1600,snap:resumed,key:play,wait:300,key:right,key:right,key:A,wait:500,snap:hub
+# Hard drops until the stack tops out: grey curtain, game-over dialog, Esci.
+wait:1100,key:next,key:next,key:next,key:next,key:next,key:next,key:next,key:next,key:next,key:next,key:next,key:next,key:next,key:next,wait:1500,snap:gameover,key:right,key:A,wait:500,snap:hub
+# A tap on B pauses; B held leaves for the games list.
+wait:1100,key:B,wait:300,snap:pause_b,key:A,wait:1600,hold:B,wait:500,snap:home_b

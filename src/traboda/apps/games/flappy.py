@@ -1,8 +1,10 @@
 """Vola!: one key to flap between the pipes. The field is never scrolled as a whole: the
 night sky is drawn once into a background buffer, each frame blits back only the strip
 a pipe just left and the bird's column, redraws the pipes as rectangles and the bird as a
-sprite, then pushes the field band."""
+sprite. A pipe touches every row of the field, so instead of whole rows each frame pushes
+rectangles: one per pipe on screen, one around the bird, plus the grass band."""
 
+import asyncio
 import framebuf
 import random
 
@@ -30,11 +32,14 @@ SPACING = 150
 GAP_MAX = 72                    # gap height, shrinking with the score
 GAP_MIN = 56
 SPEED = 614                     # pipe speed in 1/256 px per frame...
-SPEED_MAX = 921                 # ...up to 3.6 px (the erase strip is 4 px wide)
+SPEED_MAX = 921                 # ...up to 3.6 px (the strip a pipe leaves is under 4 px)
 GRAVITY = 104
 FLAP = -1310
-MAX_FALL = 2048
+MAX_FALL = 2048                 # 8 px per frame
 PERIOD = 16                     # of the grass stripes
+TRAIL_X = PIPE_W - 4            # sky restored behind a pipe: from its body's right edge...
+TRAIL_W = 8                     # ...past its cap's
+PUSH_W = PIPE_W + 4             # a pipe's rectangle covers where it was and the trail
 READY, PLAY, DEAD = 0, 1, 2
 HINTS = [("A", "Vola"), ("►‖", "Pausa")]
 
@@ -50,10 +55,31 @@ _GOLD = (255, 214, 10)
 _OFF = (0, 0, 0)
 
 
-def _skip_events(sys):
-    """Drops stale key events (common.drain would spin on the HOME of a pending app)."""
-    if not sys.pending_app():
-        common.drain(sys)
+def _pause_key(ev):
+    """Play, A held, or a tap on B (B held is HOME and leaves the game)."""
+    k, kind = B.key(ev), B.kind(ev)
+    return common.wants_pause(ev) or (k == B.A and kind == B.LONG) or (k == B.B and kind == B.CLICK)
+
+
+def _discard(sys):
+    """Drops the events queued meanwhile; False on HOME (common.drain would spin on the
+    HOME of a pending app, so that is checked first)."""
+    if sys.pending_app():
+        return False
+    for ev in common.drain(sys):
+        if B.kind(ev) == sys.HOME:
+            return False
+    return True
+
+
+async def _settle(sys):
+    """Waits (up to 1 s) for the keys still held from play, which would otherwise answer
+    the game-over dialog, then drops them; False on HOME."""
+    for _ in range(50):
+        if not sys.buttons.state:
+            break
+        await asyncio.sleep_ms(20)
+    return _discard(sys)
 
 
 def _sky():
@@ -143,9 +169,9 @@ class Game:
         self.sys = sys
         buf, self.sky = _sky()
         mv = memoryview(buf)
-        # background columns: 4 px wide ones to erase behind each pipe, and the bird's
-        self.cols = [framebuf.FrameBuffer(mv[x * 2:], 4, FIELD_H, framebuf.RGB565, 320)
-                     for x in range(317)]
+        # background columns: TRAIL_W px wide ones to restore behind each pipe, and the bird's
+        self.cols = [framebuf.FrameBuffer(mv[x * 2:], TRAIL_W, FIELD_H, framebuf.RGB565, 320)
+                     for x in range(321 - TRAIL_W)]
         self.bird_col = framebuf.FrameBuffer(mv[BIRD_X * 2:], BIRD_W, FIELD_H, framebuf.RGB565, 320)
         self.stripes = _stripes()
         self.sprites = (_bird(-3), _bird(0), _bird(3))
@@ -153,6 +179,8 @@ class Game:
         self.gap = [0] * PIPES          # gap top row
         self.gap_h = [0] * PIPES
         self.scored = bytearray(PIPES)
+        self.push_x = [None] * PIPES    # left edge of each pipe rectangle to push
+        self.shown_y = 0                # bird row on the panel
         self.leds = [_OFF] * 22
         self.reset()
 
@@ -216,17 +244,18 @@ class Game:
         gfx.text("A, ▲ o ►► per volare", 210, 102, ui.DIM, align=1)
 
     def draw_field(self):
-        """Pipes, bird, panel and grass over a background already restored."""
+        """Pipes, bird and (when ready) the panel, over a background already restored.
+        The panel goes on top every time: after a pause the pipes can cross it."""
         self.draw_pipes()
         self.draw_bird()
         if self.state == READY:
             self.draw_panel()
-        gfx.fb.blit(self.stripes[self.ground >> 8], 0, GROUND)
 
     def draw_all(self):
         self.draw_hud()
         gfx.fb.blit(self.sky, 0, TOP)
         self.draw_field()
+        gfx.fb.blit(self.stripes[self.ground >> 8], 0, GROUND)
         y = GROUND + STRIPE
         gfx.fill_rect(0, y, 320, ui.FOOTER_Y - y, _EARTH[0])
         gfx.hline(0, y, 320, _EARTH[1])
@@ -237,11 +266,25 @@ class Game:
     def paint(self):
         self.draw_all()
         self.sys.show()
+        self.shown_y = self.by >> 8
 
     def render(self):
+        """Repaints the bird's column and the pipes, then pushes only what moved."""
         gfx.fb.blit(self.bird_col, BIRD_X, TOP)
         self.draw_field()
-        self.sys.show(TOP, GROUND + STRIPE)
+        show_rect = self.sys.show_rect
+        for i in range(PIPES):
+            x = self.push_x[i]
+            if x is not None:
+                show_rect(x, TOP, PUSH_W, FIELD_H)
+                self.push_x[i] = None
+        y = self.by >> 8
+        old = self.shown_y
+        show_rect(BIRD_X, min(y, old), BIRD_W, abs(y - old) + BIRD_H)
+        self.shown_y = y
+        if self.state != DEAD:          # the grass only scrolls while alive
+            gfx.fb.blit(self.stripes[self.ground >> 8], 0, GROUND)
+            self.sys.show(GROUND, GROUND + STRIPE)
 
     def progress_leds(self):
         """Bottom row: how close the score is to the record, gold once it is beaten."""
@@ -265,16 +308,18 @@ class Game:
     # -- physics ---------------------------------------------------------------------------
 
     def scroll(self):
-        """Moves the pipes and the grass, erasing the strip each pipe leaves behind."""
+        """Moves the pipes and the grass, restoring the sky each pipe leaves behind and
+        noting the rectangle each one needs pushed."""
         fb = gfx.fb
         for i in range(PIPES):
             self.px[i] -= self.speed
             x = self.px[i] >> 8
-            right = x + PIPE_W
-            if right < 320:
-                c = max(0, min(316, right))
+            if x + TRAIL_X < 320:
+                c = max(0, min(320 - TRAIL_W, x + TRAIL_X))
                 fb.blit(self.cols[c], c, TOP)
-            if right <= 0:
+            if x < 320 and x + PUSH_W > 0:
+                self.push_x[i] = x
+            if x + PIPE_W <= 0:
                 self.px[i] = max(self.px) + (SPACING << 8)
                 self.new_gap(i)
         self.ground = (self.ground + self.speed) % (PERIOD << 8)
@@ -342,7 +387,7 @@ class Game:
                     self.paint()
                 elif kind == sys.HOME:
                     return self.leave("quit")
-                elif self.state != DEAD and (common.wants_pause(ev) or sys.is_back(ev)):
+                elif self.state != DEAD and _pause_key(ev):
                     choice = await common.pause_menu(sys, TITLE)
                     if choice != "resume" or sys.pending_app():
                         return self.leave("quit" if sys.pending_app() else choice)
@@ -350,7 +395,8 @@ class Game:
                         self.state = READY      # hover until the next flap
                         self.hover = self.by
                     self.paint()
-                    _skip_events(sys)
+                    if not _discard(sys):
+                        return self.leave("quit")
                     break
                 elif kind == B.PRESS and k in (B.A, B.UP, B.NEXT):
                     flap = True
@@ -377,7 +423,8 @@ class Game:
                 self.render()
                 self.show_leds()
                 await sys.sleep_ms(500)
-                _skip_events(sys)
+                if not await _settle(sys):
+                    return self.leave("quit")
                 return await common.game_over(sys, GAME_ID, TITLE, self.score)
             self.render()
             self.show_leds()

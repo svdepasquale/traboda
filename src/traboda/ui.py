@@ -96,6 +96,7 @@ def footer(hints, y=FOOTER_Y):
 
 
 def toast_draw(msg, color=PANEL2):
+    """Draws a centred notice; returns the rows it covers (y0, y1)."""
     lines = gfx.wrap(msg, 260)[:3]
     h = 16 * len(lines) + 16
     y = (H - h) // 2
@@ -103,6 +104,7 @@ def toast_draw(msg, color=PANEL2):
     gfx.round_rect(24, y, W - 48, h, 8, ACCENT, False)
     for i, line in enumerate(lines):
         gfx.text(line, W // 2, y + 8 + 16 * i, TEXT, align=1)
+    return y, y + h
 
 
 async def toast(sys, msg, ms=1200, color=PANEL2):

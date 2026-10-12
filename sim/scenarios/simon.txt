@@ -1,0 +1,6 @@
+# Watch the first step, answer with up (the pad is random: right or wrong), pause, resume.
+wait:1500,snap:tocca,key:up,wait:500,snap:risposta,key:play,wait:300,snap:pausa,key:A,wait:500,snap:ripresa
+# Let the answer ring run out: the error blink, the game-over dialog, Esci.
+wait:1600,snap:anello,wait:3300,snap:errore,wait:1400,snap:fine,key:right,key:A,wait:500,snap:giochi
+# A held pauses while the sequence plays; Esci from the pause menu.
+wait:800,hold:A,wait:300,snap:pausa,key:left,key:A,wait:500,snap:giochi

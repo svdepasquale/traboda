@@ -1,9 +1,9 @@
 """Synth: seven keys play a scale on a piano, plus an 8-step sequencer.
 
 LEFT UP RIGHT DOWN A PLAY NEXT are the seven notes of the scale (major, minor, major
-pentatonic or blues). NEXT held opens a small menu: mode, scale, octave, tempo and the
-pattern tools. In the sequencer the D-pad picks a step and its note, A switches the step
-on and off, NEXT (or PLAY) starts and stops the loop.
+pentatonic or blues). NEXT held opens a small menu: mode, scale, octave, tempo, volume
+and the pattern tools. In the sequencer the D-pad picks a step and its note, A switches
+the step on and off, NEXT (or PLAY) starts and stops the loop. A held leaves.
 """
 
 import random
@@ -27,7 +27,8 @@ SCALES = (
     ("Blues", (0, 3, 5, 6, 7, 10, 12)),
 )
 MODES = ("Tastiera", "Sequencer")
-MENU = ("Modalità", "Scala", "Ottava", "Tempo", "Sequenza casuale", "Svuota sequenza")
+MENU = ("Modalità", "Scala", "Ottava", "Tempo", "Volume", "Sequenza casuale",
+        "Svuota sequenza")
 # one colour per scale degree, boomwhacker style
 COLOURS = ((255, 64, 64), (255, 150, 40), (255, 222, 40), (90, 220, 90), (40, 200, 230),
            (80, 120, 255), (200, 90, 255))
@@ -42,6 +43,7 @@ DEFAULTS = {"mode": 0, "scale": 0, "octave": 4, "bpm": 120,
 
 NOTE_MS = 180
 DECAY_MS = 420
+ECHO_MS = 30                            # frame time of the fading echo
 OCT_LO, OCT_HI = 2, 5
 BPM_LO, BPM_HI = 60, 200
 
@@ -61,9 +63,10 @@ NUM_Y = 55
 GRID_X, GRID_Y = 44, 69
 COL_W, ROW_H = 33, 18
 INFO_Y = 200
-# menu overlay
-MENU_X, MENU_Y, MENU_W = 44, 58, 232
-MENU_H = 32 + 20 * len(MENU) + 6
+# menu overlay, between the info band and the footer
+MENU_X, MENU_Y, MENU_W = 44, 52, 232
+MENU_ROW = 19
+MENU_H = 30 + MENU_ROW * len(MENU) + 6
 
 
 def _freq(semi, octave):
@@ -96,18 +99,13 @@ def _tone(sys, freq, ms):
 class Synth:
     def __init__(self, sys):
         self.sys = sys
-        cfg = dict(DEFAULTS)
         saved = settings.get("synth")
-        if isinstance(saved, dict):
-            cfg.update(saved)
-        if len(cfg["notes"]) != 8 or len(cfg["on"]) != 8:
-            cfg["notes"], cfg["on"] = DEFAULTS["notes"], DEFAULTS["on"]
-        self.mode = cfg["mode"] % 2
-        self.scale = cfg["scale"] % len(SCALES)
-        self.octave = min(OCT_HI, max(OCT_LO, cfg["octave"]))
-        self.bpm = min(BPM_HI, max(BPM_LO, cfg["bpm"]))
-        self.notes = [min(6, max(0, n)) for n in cfg["notes"]]
-        self.on = [bool(x) for x in cfg["on"]]
+        try:
+            self.configure(saved if isinstance(saved, dict) else {})
+        except (TypeError, ValueError):
+            self.configure({})
+        self.lights = settings.get("leds_on")
+        self.dirty = False          # settings.json needs writing on exit
         self.cursor = 0
         self.step = -1              # step being played
         self.playing = False
@@ -115,9 +113,26 @@ class Synth:
         self.held = 0               # note keys held, as a bitmask of degrees
         self.last = -1              # degree played last
         self.hit = None             # ticks_ms of that note while its echo fades
+        self.echo_at = 0            # ticks_ms of the last echo frame
         self.menu = -1              # selected menu row, -1 while closed
         self.menu_sel = 0
         self.frame = [BLACK] * 22
+
+    def configure(self, saved):
+        """Mode, scale, octave, tempo and pattern from the saved dict over the defaults;
+        raises TypeError/ValueError on damaged values."""
+        cfg = dict(DEFAULTS)
+        cfg.update(saved)
+        notes = [min(6, max(0, int(n))) for n in cfg["notes"]]
+        on = [bool(x) for x in cfg["on"]]
+        if len(notes) != 8 or len(on) != 8:
+            raise ValueError("pattern")
+        self.mode = int(cfg["mode"]) % 2
+        self.scale = int(cfg["scale"]) % len(SCALES)
+        self.octave = min(OCT_HI, max(OCT_LO, int(cfg["octave"])))
+        self.bpm = min(BPM_HI, max(BPM_LO, int(cfg["bpm"])))
+        self.notes = notes
+        self.on = on
 
     # -- music -------------------------------------------------------------------------
 
@@ -129,6 +144,11 @@ class Synth:
 
     def step_ms(self):
         return 30000 // self.bpm            # eighth notes
+
+    def preview(self, ms):
+        """The note being edited: the last one played, or the sequencer's current step."""
+        d = max(0, self.last) if self.mode == 0 else self.notes[self.cursor]
+        _tone(self.sys, self.freq(d), ms)
 
     def env(self):
         if self.hit is None:
@@ -236,22 +256,25 @@ class Synth:
         for d in range(7):
             gfx.text(_name(semis[d], self.octave), 8, _row_y(d) + 3, SCREEN[d], "small")
         for s in range(8):
-            x = _col_x(s)
-            now = self.playing and s == self.step
-            gfx.text(str(s + 1), x + 15, NUM_Y, ui.ACCENT if s == self.cursor else ui.DIM,
-                     "small", align=1)
-            gfx.round_rect(x, GRID_Y, COL_W - 3, 7 * ROW_H, 5,
-                           ui.LINE if now else ui.PANEL2 if s == self.cursor else ui.PANEL)
-            if s == self.cursor:
-                gfx.round_rect(x, GRID_Y, COL_W - 3, 7 * ROW_H, 5, ui.ACCENT, False)
-            d = self.notes[s]
-            for r in range(7):
-                if r != d:
-                    gfx.fill_rect(x + 13, _row_y(r) + 8, 4, 2, ui.PANEL if now else ui.LINE)
-            if self.on[s]:
-                gfx.round_rect(x + 3, _row_y(d) + 2, COL_W - 9, ROW_H - 4, 4, SCREEN[d])
-            else:
-                gfx.round_rect(x + 3, _row_y(d) + 2, COL_W - 9, ROW_H - 4, 4, SCREEN[d], False)
+            self.draw_col(s)
+
+    def draw_col(self, s):
+        """Step s: its number, its column (lit while it plays) and its note."""
+        x = _col_x(s)
+        now = self.playing and s == self.step
+        cur = s == self.cursor
+        gfx.fill_rect(x, NUM_Y, COL_W - 3, 12, ui.BG)
+        gfx.text(str(s + 1), x + 15, NUM_Y, ui.YELLOW if now else ui.ACCENT if cur else ui.DIM,
+                 "small", align=1)
+        gfx.round_rect(x, GRID_Y, COL_W - 3, 7 * ROW_H, 5,
+                       ui.LINE if now else ui.PANEL2 if cur else ui.PANEL)
+        if cur:
+            gfx.round_rect(x, GRID_Y, COL_W - 3, 7 * ROW_H, 5, ui.ACCENT, False)
+        d = self.notes[s]
+        for r in range(7):
+            if r != d:
+                gfx.fill_rect(x + 13, _row_y(r) + 8, 4, 2, ui.PANEL if now else ui.LINE)
+        gfx.round_rect(x + 3, _row_y(d) + 2, COL_W - 9, ROW_H - 4, 4, SCREEN[d], self.on[s])
 
     def draw_step(self):
         gfx.fill_rect(0, INFO_Y - 2, 320, ui.FOOTER_Y - INFO_Y + 2, ui.BG)
@@ -261,7 +284,7 @@ class Synth:
             gfx.text(self.name(self.notes[s]), x, INFO_Y, SCREEN[self.notes[s]])
         else:
             gfx.text("pausa", x, INFO_Y, ui.DIM)
-        gfx.text("►► tieni: menu", 312, INFO_Y + 2, ui.DIM, "small", align=-1)
+        gfx.text("A tieni: esci · ►► tieni: menu", 312, INFO_Y + 2, ui.DIM, "small", align=-1)
 
     def menu_value(self, i):
         if i == 0:
@@ -272,29 +295,34 @@ class Synth:
             return str(self.octave)
         if i == 3:
             return "%d BPM" % self.bpm
+        if i == 4:
+            return "%d%%" % self.sys.audio.volume
         return None
 
     def draw_menu(self):
         x, y, w = MENU_X, MENU_Y, MENU_W
+        gfx.fill_rect(0, y, 320, MENU_H, ui.BG)     # nothing half-hidden around the panel
         gfx.round_rect(x, y, w, MENU_H, 10, ui.PANEL)
         gfx.round_rect(x, y, w, MENU_H, 10, ui.ACCENT, False)
         gfx.text("Menu Synth", x + w // 2, y + 6, ui.TEXT, align=1)
         gfx.hline(x + 16, y + 26, w - 32, ui.LINE)
         for i, label in enumerate(MENU):
-            ry = y + 32 + i * 20
+            ry = y + 30 + i * MENU_ROW
             sel = i == self.menu
             if sel:
-                gfx.round_rect(x + 6, ry, w - 12, 19, 5, ui.PANEL2)
-                gfx.fill_rect(x + 6, ry + 4, 3, 11, ui.ACCENT)
-            gfx.text(label, x + 16, ry + 2, ui.TEXT if sel else ui.DIM)
+                gfx.round_rect(x + 6, ry, w - 12, MENU_ROW - 1, 5, ui.PANEL2)
+                gfx.fill_rect(x + 6, ry + 4, 3, MENU_ROW - 9, ui.ACCENT)
+            gfx.text(label, x + 16, ry + 1, ui.TEXT if sel else ui.DIM)
             v = self.menu_value(i)
             if v:
-                gfx.text("◄ %s ►" % v if sel else v, x + w - 12, ry + 2, ui.CYAN if sel else ui.DIM,
+                gfx.text("◄ %s ►" % v if sel else v, x + w - 12, ry + 1, ui.CYAN if sel else ui.DIM,
                          align=-1)
 
     # -- LEDs --------------------------------------------------------------------------
 
     def leds(self):
+        if not self.lights:
+            return                  # the user switched the LEDs off
         frame = self.frame
         if self.mode == 0:
             # the seven note colours dimly on their columns; the last note glows over them
@@ -333,25 +361,30 @@ class Synth:
         self.leds()
 
     def advance(self, now):
-        sys = self.sys
+        """The next step: its note first (timing is what the ear checks), then the two
+        columns that changed."""
         period = self.step_ms()
-        self.step = (self.step + 1) % 8
+        old = self.step
+        self.step = (old + 1) % 8
         self.next_at = time.ticks_add(self.next_at, period)
         if time.ticks_diff(self.next_at, now) <= 0:
             self.next_at = time.ticks_add(now, period)
-        if self.menu < 0:
-            self.draw_grid()
-            sys.show(NUM_Y, GRID_Y + 7 * ROW_H)
-        self.leds()
         if self.on[self.step]:
-            _tone(sys, self.freq(self.notes[self.step]), min(NOTE_MS, period * 7 // 10))
+            _tone(self.sys, self.freq(self.notes[self.step]), min(NOTE_MS, period * 7 // 10))
+        if self.menu < 0:
+            if old >= 0:
+                self.draw_col(old)
+            self.draw_col(self.step)
+            self.sys.show(NUM_Y, GRID_Y + 7 * ROW_H)
+        self.leds()
 
     def tick(self):
-        """Sequencer steps and the fading echo of the last note."""
+        """Sequencer steps and, every ECHO_MS, the fading echo of the last note."""
         now = time.ticks_ms()
         if self.playing and time.ticks_diff(now, self.next_at) >= 0:
             self.advance(now)
-        if self.hit is not None:
+        if self.hit is not None and time.ticks_diff(now, self.echo_at) >= ECHO_MS:
+            self.echo_at = now
             if time.ticks_diff(now, self.hit) >= DECAY_MS:
                 self.hit = None
             if self.menu < 0 and self.mode == 0:
@@ -360,11 +393,13 @@ class Synth:
             self.leds()
 
     def timeout(self):
+        now = time.ticks_ms()
         t = None
         if self.playing:
-            t = max(1, time.ticks_diff(self.next_at, time.ticks_ms()))
+            t = max(1, time.ticks_diff(self.next_at, now))
         if self.hit is not None:
-            t = 30 if t is None else min(t, 30)
+            e = max(1, ECHO_MS - time.ticks_diff(now, self.echo_at))
+            t = e if t is None else min(t, e)
         return t
 
     def open_menu(self):
@@ -383,17 +418,18 @@ class Synth:
         self.leds()
 
     def menu_event(self, ev, k, kind):
-        if self.sys.is_back(ev):
+        sys = self.sys
+        if sys.is_back(ev):
             self.close_menu()
             return
         i = self.menu
         if kind == B.CLICK and k in (B.A, B.NEXT):
-            if i == 4:
+            if i == 5:
                 self.notes = [random.randrange(7) for _ in range(8)]
                 self.on = [s == 0 or random.randrange(4) > 0 for s in range(8)]
-            elif i == 5:
+            elif i == 6:
                 self.on = [False] * 8
-            if i >= 4 and self.mode == 0:
+            if i >= 5:
                 self.mode = 1
             self.close_menu()
             return
@@ -403,7 +439,10 @@ class Synth:
             self.menu = (i + (1 if k == B.DOWN else -1)) % len(MENU)
         elif k in (B.LEFT, B.RIGHT):
             delta = 1 if k == B.RIGHT else -1
+            before = self.menu_value(i)
             if i == 0:
+                if kind != B.PRESS:
+                    return              # a held key must not flip the mode back and forth
                 self.mode = 1 - self.mode
                 if self.playing:
                     self.set_playing(False)
@@ -414,13 +453,21 @@ class Synth:
                 self.octave = min(OCT_HI, max(OCT_LO, self.octave + delta))
             elif i == 3:
                 self.bpm = min(BPM_HI, max(BPM_LO, self.bpm + 10 * delta))
+            elif i == 4:
+                v = max(0, min(100, sys.audio.volume + 5 * delta))
+                sys.audio.set_volume(v)
+                settings.set("volume", v, False)
+                self.dirty = True
+            else:
+                return
             self.draw_info()
-            if self.mode == 0 and self.last >= 0 and i in (1, 2):
-                _tone(self.sys, self.freq(self.last), 120)
+            if kind == B.PRESS and i in (1, 2, 4) and not self.playing \
+                    and self.menu_value(i) != before:
+                self.preview(120 if i < 4 else 60)
         else:
             return
         self.draw_menu()
-        self.sys.show(19, MENU_Y + MENU_H)
+        sys.show(19, MENU_Y + MENU_H)
 
     def keys_event(self, k, kind):
         if k not in NOTE_KEYS or kind not in (B.PRESS, B.RELEASE):
@@ -431,14 +478,14 @@ class Synth:
             self.draw_keys()
             self.sys.show(KEY_Y - 4, KEY_Y + KEY_H)
             return
+        _tone(self.sys, self.freq(d), NOTE_MS)     # sound first, then the picture
         self.held |= 1 << d
         self.last = d
-        self.hit = time.ticks_ms()
+        self.hit = self.echo_at = time.ticks_ms()
         self.draw_scope()
         self.draw_keys()
         self.sys.show(SCOPE_Y, KEY_Y + KEY_H)
         self.leds()
-        _tone(self.sys, self.freq(d), NOTE_MS)
 
     def seq_event(self, k, kind):
         c = self.cursor
@@ -446,8 +493,10 @@ class Synth:
         if kind in (B.PRESS, B.REPEAT) and k in (B.LEFT, B.RIGHT):
             self.cursor = (c + (1 if k == B.RIGHT else -1)) % 8
         elif kind in (B.PRESS, B.REPEAT) and k in (B.UP, B.DOWN):
-            self.notes[c] = min(6, max(0, self.notes[c] + (1 if k == B.UP else -1)))
-            self.on[c] = preview = True
+            n = min(6, max(0, self.notes[c] + (1 if k == B.UP else -1)))
+            preview = n != self.notes[c] or not self.on[c] or kind == B.PRESS
+            self.notes[c] = n
+            self.on[c] = True
         elif kind == B.CLICK and k == B.A:
             self.on[c] = preview = not self.on[c]
         elif (kind == B.CLICK and k == B.NEXT) or (kind == B.PRESS and k == B.PLAY):
@@ -455,18 +504,23 @@ class Synth:
             return
         else:
             return
-        self.draw_grid()
+        if preview and not self.playing:
+            self.preview(100)
+        self.draw_col(c)
+        if self.cursor != c:
+            self.draw_col(self.cursor)
         self.draw_step()
         self.sys.show(NUM_Y, ui.FOOTER_Y)
         self.leds()
-        if preview and not self.playing:
-            _tone(self.sys, self.freq(self.notes[c]), 140)
 
     def save(self):
         cfg = {"mode": self.mode, "scale": self.scale, "octave": self.octave, "bpm": self.bpm,
                "notes": list(self.notes), "on": [1 if x else 0 for x in self.on]}
         if cfg != settings.get("synth"):
-            settings.set("synth", cfg)
+            settings.set("synth", cfg, False)
+            self.dirty = True
+        if self.dirty:
+            settings.save()
 
     async def run(self, music_paused):
         sys = self.sys
@@ -498,7 +552,8 @@ class Synth:
 
 
 async def main(sys):
-    music_paused = sys.audio.playing and not sys.audio.paused
+    a = sys.audio
+    music_paused = a.playing and not a.paused
     if music_paused:
         sys.player.play_pause()
     synth = Synth(sys)
@@ -508,3 +563,5 @@ async def main(sys):
         synth.save()
         if sys.leds:
             sys.leds.set_effect(settings.get("led_effect") if settings.get("leds_on") else "off")
+        if music_paused and a.playing and a.paused:
+            sys.player.play_pause()     # the music goes on where it was

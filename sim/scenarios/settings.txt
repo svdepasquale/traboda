@@ -1,0 +1,24 @@
+# Root list, Badge page with its preview, back.
+wait:800,snap:root,key:A,wait:400,snap:badge,hold:A,wait:300,snap:root2
+# Schermo: brightness up, auto-off changed (no "A Ok" hint: nothing to select).
+wait:800,key:down,key:A,wait:400,key:right,wait:200,key:down,key:left,wait:200,snap:schermo
+# Audio page, last row selected.
+wait:800,key:down,key:down,key:A,wait:400,key:down,key:down,key:down,wait:200,snap:audio
+# LED page: effect names in Italian.
+wait:800,key:down,key:down,key:down,key:A,wait:400,key:down,key:right,wait:300,snap:led
+# Ora: time zone, manual date and time saved with A; the A that ends the toast must not reopen it.
+wait:800,key:down,key:down,key:down,key:down,key:A,wait:400,snap:ora,key:down,key:A,wait:400,key:up,key:right,key:up,wait:200,snap:data_ora,key:A,wait:300,key:A,wait:500,snap:ora2
+# Test tasti: a few keys, then A held 2 s to leave.
+wait:800,key:up,key:up,key:up,key:up,key:up,key:A,wait:400,key:left,key:play,wait:200,snap:tasti,down:A,wait:1200,snap:uscita,wait:1100,up:A,wait:300,snap:root
+# Info sistema, one page down.
+wait:800,key:up,key:up,key:up,key:up,key:A,wait:600,snap:info,key:right,wait:300,snap:info2
+# Riavvia: the dialog defaults to Annulla.
+wait:800,key:up,key:up,key:up,key:A,wait:300,snap:riavvia,key:A,wait:300,snap:annullato
+# Ripristina: the dialog, cancelled with A held.
+wait:800,key:up,key:A,wait:300,snap:ripristina,hold:A,wait:300,snap:annullato
+# Standby (deep sleep is a SystemExit in the simulator, so the screen comes back).
+wait:800,key:up,key:up,key:A,wait:1500,snap:standby
+# The Wi-Fi row opens the Wi-Fi app.
+wait:800,key:down,key:down,key:down,key:down,key:down,key:A,wait:600,snap:wifi
+# B held inside the nickname keyboard goes straight back to the launcher.
+wait:800,key:A,wait:400,key:A,wait:400,hold:B,wait:500,snap:home

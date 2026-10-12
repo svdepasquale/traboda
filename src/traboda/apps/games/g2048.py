@@ -51,6 +51,7 @@ _FILL = tuple(rgb(*c) for c, _ in _TILES)
 _INK = tuple(ui.BG if dark else ui.WHITE for _, dark in _TILES)
 _EMPTY = rgb(34, 40, 68)
 _OFF = (0, 0, 0)
+GOLD = [(255, 214, 10)] * 22
 
 
 def slide(cells, lines, motion=None, merged=None):
@@ -194,9 +195,17 @@ class Game:
         self.draw_board()
         ui.footer(HINTS)
         self.sys.show()
+        self.show_leds()
 
-    def push_board(self):
-        self.sys.show(BY, BY + SIZE)
+    def push_rows(self, rows):
+        """Pushes the band of the cell rows set in the bitmask (popped tiles included)."""
+        r0 = 0
+        while not rows >> r0 & 1:
+            r0 += 1
+        r1 = 3
+        while not rows >> r1 & 1:
+            r1 -= 1
+        self.sys.show(BY + r0 * (TILE + GAP), BY + (r1 + 1) * (TILE + GAP) + GAP)
 
     def show_leds(self):
         top = max(self.cells)
@@ -206,7 +215,7 @@ class Game:
 
     # -- play ------------------------------------------------------------------------------
 
-    async def animate(self, motion, merged, new):
+    async def animate(self, motion, merged, new, rows):
         """Slides the tiles in two steps, pops the merged ones and grows the new one."""
         tick = common.Ticker(40)
         for step in (1, 2):
@@ -215,13 +224,14 @@ class Game:
                 sx, sy = _xy(src)
                 dx, dy = _xy(dst)
                 _tile(sx + (dx - sx) * step // 3, sy + (dy - sy) * step // 3, e)
-            self.push_board()
+            self.push_rows(rows)
             await tick.wait()
         self.draw_board(merged, new)
-        self.push_board()
+        self.push_rows(rows)
         await tick.wait()
 
     async def move(self, k):
+        """One move: only the cell rows that changed are pushed, plus the cards."""
         sys = self.sys
         motion = []
         merged = []
@@ -231,11 +241,19 @@ class Game:
         self.moves += 1
         self.score += points
         new = spawn(self.cells)
+        rows = 0
+        for src, dst, _e in motion:
+            if src != dst:
+                rows |= (1 << (src // 4)) | (1 << (dst // 4))
+        if new >= 0:
+            rows |= 1 << (new // 4)
         if not any(B.kind(e) == B.PRESS for e in sys.buttons.queue):
-            await self.animate(motion, merged, new)
+            await self.animate(motion, merged, new, rows)
         self.draw_cards()
         self.draw_board()
-        self.push_board()
+        self.push_rows(rows)
+        if not rows & 1:
+            self.push_rows(1)           # the cards beside the top row
         if points:
             self.draw_hud()
             sys.show(0, common.HUD_H)
@@ -245,7 +263,6 @@ class Game:
     async def run(self):
         sys = self.sys
         self.paint()
-        self.show_leds()
         while True:
             ev = await sys.event()
             if ev is None:
@@ -271,7 +288,8 @@ class Game:
             if not self.won and max(self.cells) >= WIN:
                 self.won = True
                 common.sfx(sys, "win")
-                common.leds_flash(sys, (255, 214, 10), 1200)
+                common.leds_frame(sys, GOLD)
+                _skip_events(sys)
                 choice = await ui.dialog(sys, "2048!", "Punti: %d\nContinui per un record?" % self.score,
                                          ("Continua", "Basta"), accent=ui.YELLOW)
                 if choice == 1:
@@ -280,6 +298,7 @@ class Game:
                 _skip_events(sys)
             if not can_move(self.cells):
                 await sys.sleep_ms(700)
+                _skip_events(sys)
                 return await common.game_over(sys, GAME_ID, TITLE, self.score, won=self.won)
 
 

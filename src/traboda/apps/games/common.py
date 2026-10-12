@@ -36,13 +36,16 @@ def sfx(sys, name):
 
 
 def drain(sys):
-    """Every pending event, already filtered by the core (HOME, REDRAW...)."""
+    """Every pending event, already filtered by the core (HOME, REDRAW...). Stops at a
+    HOME: the core keeps answering HOME until the game returns."""
     out = []
     while True:
         ev = sys.poll_event()
         if ev is None:
             return out
         out.append(ev)
+        if B.kind(ev) == sys.HOME:
+            return out
 
 
 class Ticker:
@@ -69,13 +72,14 @@ def hud(title, score, best=None, extra=None, color=ui.YELLOW):
 
 
 def leds_flash(sys, color, ms=400):
-    if sys.leds:
+    if sys.leds and settings.get("leds_on"):
         sys.leds.flash(color, ms, 100)
 
 
 def leds_frame(sys, frame):
-    """Draw a 22-LED frame (positions row-major, top row first)."""
-    if sys.leds:
+    """Draw a 22-LED frame (positions row-major, top row first), unless the user turned
+    the LEDs off."""
+    if sys.leds and settings.get("leds_on"):
         if sys.leds.effect != "custom":
             sys.leds.set_effect("custom")
         sys.leds.frame = frame
@@ -95,14 +99,26 @@ async def countdown(sys, redraw):
 
 
 async def pause_menu(sys, title):
-    """Returns "resume", "restart" or "quit"."""
+    """Returns "resume", "restart" or "quit" (also when HOME arrived)."""
     choice = await ui.dialog(sys, title + " - pausa", "▶ riprendi la partita",
-                             ("Riprendi", "Ricomincia", "Esci"), accent=ui.YELLOW)
-    return ("resume", "restart", "quit")[choice] if choice is not None else "resume"
+                             ("Riprendi", "Da capo", "Esci"), accent=ui.YELLOW)
+    if choice is None:
+        return "quit" if sys.leaving() else "resume"
+    return ("resume", "restart", "quit")[choice]
+
+
+async def settle(sys, ms=1000):
+    """Waits until no key is held (at most ms), then drops what is queued, so a key
+    still down from the game does not answer the next dialog."""
+    t0 = time.ticks_ms()
+    while sys.buttons.state and time.ticks_diff(time.ticks_ms(), t0) < ms:
+        await asyncio.sleep_ms(15)
+    sys.absorb_keys()
 
 
 async def game_over(sys, game_id, title, score, won=False):
     """Records the best score, celebrates a record. Returns "restart" or "quit"."""
+    await settle(sys)
     best_before = settings.score(game_id)
     best = settings.score(game_id, score)
     record = score > best_before and score > 0
@@ -115,7 +131,7 @@ async def game_over(sys, game_id, title, score, won=False):
     msg = "Punti: %d\nRecord: %d%s" % (score, best, "\nNUOVO RECORD!" if record else "")
     choice = await ui.dialog(sys, ("Hai vinto!" if won else "Game over") + " - " + title, msg,
                              ("Ancora", "Esci"), accent=ui.YELLOW if record else ui.ACCENT)
-    return "restart" if choice == 0 else "quit"
+    return "restart" if choice == 0 and not sys.leaving() else "quit"
 
 
 def wants_pause(ev):

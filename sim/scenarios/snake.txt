@@ -1,0 +1,10 @@
+# Countdown, steer down then left, pause on play and resume (countdown again).
+wait:1100,snap:play,key:down,wait:300,key:left,wait:300,snap:turned,key:play,wait:300,snap:pause,key:A,wait:1600,snap:resumed
+# Straight into the top wall: crash, game-over dialog, play again.
+wait:1100,key:up,wait:1000,snap:near,wait:1500,snap:gameover,key:A,wait:400,snap:again
+# Pause, Ricomincia, then pause and Esci back to the games list.
+wait:1100,key:play,wait:300,key:right,key:A,wait:1700,snap:restarted,key:play,wait:300,key:right,key:right,key:A,wait:500,snap:hub
+# A tap on B pauses; B held leaves for the games list.
+wait:1100,key:B,wait:300,snap:pause_b,key:A,wait:1600,hold:B,wait:500,snap:home_b
+# A held pauses too; A held again in the dialog resumes.
+wait:1100,hold:A,wait:300,snap:pause_a,hold:A,wait:1600,snap:resumed_a

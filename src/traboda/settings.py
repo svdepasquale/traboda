@@ -30,6 +30,7 @@ DEFAULTS = {
 }
 
 _data = None
+errors = []        # save failures, shown by the system info screen
 
 
 def _path():
@@ -38,7 +39,7 @@ def _path():
 
 def load():
     global _data
-    data = dict(DEFAULTS)
+    data = json.loads(json.dumps(DEFAULTS))     # deep copy: scores etc. are mutated in place
     try:
         with open(_path()) as f:
             data.update(json.load(f))
@@ -65,16 +66,19 @@ def set(key, value, save_now=True):
 def save():
     if _data is None:
         return
+    import os
     path = _path()
     tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(_data, f)
-    import os
     try:
-        os.remove(path)
-    except OSError:
-        pass
-    os.rename(tmp, path)
+        with open(tmp, "w") as f:
+            json.dump(_data, f)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        os.rename(tmp, path)
+    except OSError as e:          # full or failing flash: keep running on the RAM copy
+        errors.append("settings: %s" % e)
 
 
 def score(game, value=None):

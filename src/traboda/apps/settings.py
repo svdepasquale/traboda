@@ -19,6 +19,9 @@ ZONES = (tuple("UTC-%02d:00" % h for h in range(12, 0, -1))
          + ("UTC", "Europe/London", "UTC+01:00", "Europe/Rome", "UTC+02:00", "Europe/Athens")
          + tuple("UTC+%02d:00" % h for h in range(3, 15)))
 RETRO_PARTS = ("launcher", "retro-core", "prboom-go")
+FX_NAMES = {"solid": "Fisso", "breathe": "Respiro", "rainbow": "Arcobaleno", "wave": "Onda",
+            "comet": "Cometa", "scanner": "Scanner", "sparkle": "Scintille", "fire": "Fuoco",
+            "police": "Polizia", "vu": "VU meter"}           # as the Lights app names them
 
 icons.register("set_screen", (
     "................",
@@ -111,6 +114,32 @@ class _Nav:
         return ev
 
 
+async def _toast(nav, msg, ms=1200):
+    """ui.toast, but the key that cuts it short is used up to its release instead of also
+    acting on the page underneath."""
+    ui.toast_draw(msg)
+    nav.show()
+    if not await nav.sleep_ms(ms, interruptible=True):
+        return
+    k = None
+    held = False
+    while True:
+        ev = await nav.event(timeout_ms=1000)
+        if ev is None or B.kind(ev) == nav.HOME:
+            return
+        kind = B.kind(ev)
+        if kind == nav.REDRAW:
+            continue
+        if k is None:
+            if kind == B.PRESS:
+                k = B.key(ev)
+        elif B.key(ev) == k:
+            if kind == B.LONG:
+                held = True
+            elif kind == B.CLICK or (kind == B.RELEASE and held):
+                return
+
+
 async def main(sys):
     nav = _Nav(sys)
     sel = 0
@@ -130,7 +159,8 @@ async def main(sys):
 
 
 def _main_items(sys):
-    leds = settings.get("led_effect") if settings.get("leds_on") else "spenti"
+    fx = settings.get("led_effect")
+    leds = FX_NAMES.get(fx, fx) if settings.get("leds_on") else "spenti"
     wifi = net.ssid if net.connected() else "non connesso"
     return [
         ui.Item("Badge", gfx.ellipsize(settings.get("nickname"), 128), "badge", tag="badge"),
@@ -165,10 +195,11 @@ async def _page(nav, title, icon, items, changed=None, notes=None, card=None, se
             _note(notes[it.tag], y)
 
     if hints is None:
+        hints = [("A tieni", "Indietro")]
+        if any(i.kind not in ("slider", "choice") for i in items):
+            hints.insert(0, ("A", "Ok"))
         if any(i.kind in ("slider", "choice") for i in items):
-            hints = [("◄►", "Cambia"), ("A", "Ok"), ("A tieni", "Indietro")]
-        else:
-            hints = [("A", "Ok"), ("A tieni", "Indietro")]
+            hints.insert(0, ("◄►", "Cambia"))
     try:
         return await ui.menu(nav, title, items, icon=icon, sel=sel, hints=hints,
                              on_change=on_change if changed else None, on_draw=on_draw)
@@ -274,21 +305,27 @@ async def _leds(nav):
         await ui.dialog(nav, "LED", "I LED non rispondono su questo badge.")
         return
     from ..leds import EFFECTS
+    fx = [e for e in EFFECTS if e != "off"]
+    names = [FX_NAMES.get(e, e) for e in fx]
+    cur = settings.get("led_effect")
     items = [ui.Item("LED", settings.get("leds_on"), "lights", "toggle", tag="leds_on"),
-             ui.Item("Effetto", settings.get("led_effect"), "lights", "choice", choices=list(EFFECTS[1:]),
+             ui.Item("Effetto", FX_NAMES.get(cur, cur), "lights", "choice", choices=names,
                      tag="led_effect"),
              ui.Item("Luminosità", settings.get("led_brightness"), "lights", "slider", step=5, lo=5,
                      tag="led_brightness"),
              ui.Item("Colori e animazioni", None, "lights", tag="app")]
 
     def changed(it):
+        if it.tag == "led_effect":
+            effect = fx[names.index(it.value)]
+            settings.set("led_effect", effect, False)
+            settings.set("leds_on", True, False)
+            items[0].value = True
+            leds.set_effect(effect)
+            return
         settings.set(it.tag, it.value, False)
         if it.tag == "leds_on":
             leds.set_effect(settings.get("led_effect") if it.value else "off")
-        elif it.tag == "led_effect":
-            settings.set("leds_on", True, False)
-            items[0].value = True
-            leds.set_effect(it.value)
         else:
             leds.level = it.value / 100
 
@@ -333,7 +370,7 @@ async def _time(nav):
             ui.toast_draw("Sincronizzazione…")
             nav.show()
             ok = net.sync_time()
-            await ui.toast(nav, "Ora sincronizzata" if ok else "Server dell'ora non raggiungibile")
+            await _toast(nav, "Ora sincronizzata" if ok else "Server dell'ora non raggiungibile")
         if nav.home:
             return
 
@@ -391,7 +428,7 @@ async def _set_clock(nav):
             return
         elif k == B.A and kind == B.CLICK:
             _apply_clock(nav.sys, v)
-            await ui.toast(nav, "Ora impostata", 900)
+            await _toast(nav, "Ora impostata", 900)
             return
         elif kind in (B.PRESS, B.REPEAT):
             if k in (B.LEFT, B.RIGHT):
@@ -748,7 +785,7 @@ async def _standby(nav):
 
 async def _factory(nav):
     msg = "Cancella nickname, reti Wi-Fi salvate, record dei giochi e preferenze, poi riavvia il badge."
-    if await ui.dialog(nav, "Ripristinare tutto?", msg, ("Annulla", "Ripristina")) != 1:
+    if await ui.dialog(nav, "Ripristinare tutto?", msg, ("Annulla", "Azzera")) != 1:
         return
     try:
         os.remove(paths.data("settings.json"))

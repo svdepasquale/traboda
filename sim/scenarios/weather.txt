@@ -1,0 +1,10 @@
+# No Wi-Fi and no cache: message, city picker, Milano chosen.
+wait:900,snap:serve_wifi,key:down,wait:300,snap:citta,key:down,key:A,wait:500,snap:milano
+# A with no Wi-Fi opens the Wi-Fi app.
+wait:900,key:A,wait:600,snap:wifi
+# Join the open network from the Wi-Fi app, then the forecast (fixture) and a manual refresh.
+key:A,wait:600,key:A,wait:900,key:down,key:down,key:A,wait:2700,app:weather,wait:1000,snap:previsioni,key:A,wait:700,snap:aggiornate
+# With the forecast cached and Wi-Fi off: the offline header and the "A Wi-Fi" hint.
+key:A,wait:600,key:A,wait:900,key:down,key:down,key:A,wait:2700,app:weather,wait:900,app:wifi,wait:600,key:up,key:A,key:A,wait:400,app:weather,wait:2200,snap:offline
+# B held in the city picker goes straight back to the launcher.
+wait:900,key:down,wait:300,hold:B,wait:500,snap:home
