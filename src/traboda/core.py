@@ -176,6 +176,15 @@ class System:
                 return None
             await asyncio.sleep_ms(10)
 
+    def poll_event(self):
+        """Next event without waiting, or None (game loops drain these each frame)."""
+        if self._redraw:
+            self._redraw = False
+            return REDRAW << 4
+        if self._requested_app:
+            return HOME << 4 | B.B
+        return self._next_event()
+
     def _next_event(self):
         q = self.buttons.queue
         while q:
