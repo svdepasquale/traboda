@@ -7,6 +7,8 @@ fallback; do that on the first install (the stock firmware left FAT filesystems 
 or to start over. Nothing between 0x410000 and 0x742000 (Retro-Go, otadata) is written.
 
 Usage: tools/flash.py [--port PORT] [--erase-fs]
+       tools/flash.py --backup FILE        read the whole 16 MB flash into FILE
+       tools/flash.py --restore FILE --yes write a full backup back (the stock firmware)
 """
 
 import argparse
@@ -50,7 +52,24 @@ def main():
     ap.add_argument("--port", help="serial port (default: the only Espressif device)")
     ap.add_argument("--erase-fs", action="store_true",
                     help="erase Traboda's filesystem and Retro-Go's FAT fallback")
+    ap.add_argument("--backup", metavar="FILE", help="read the whole flash into FILE")
+    ap.add_argument("--restore", metavar="FILE", help="write a full 16 MB image at 0x0")
+    ap.add_argument("--yes", action="store_true", help="confirm --restore")
     args = ap.parse_args()
+
+    if args.backup or args.restore:
+        port = badge.find_port(args.port)
+        esptool = ["esptool", "--chip", "esp32s3", "--port", port, "--baud", "921600",
+                   "--after", "watchdog-reset"]
+        if args.backup:
+            subprocess.run(esptool + ["read-flash", "0", "0x1000000", args.backup], check=True)
+            return
+        if os.path.getsize(args.restore) != 0x1000000:
+            sys.exit("%s is not a 16 MB full-flash image" % args.restore)
+        if not args.yes:
+            sys.exit("this overwrites the whole badge, Traboda included: add --yes")
+        subprocess.run(esptool + ["write-flash", "0x0", args.restore], check=True)
+        return
 
     files = {name: os.path.join(DIST, name) for name in
              ("bootloader.bin", "partition-table.bin", "traboda.bin")}

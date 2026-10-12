@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build
+        shell: bash
+        run: |
+          git config --global --add safe.directory '*'
+          IDF_PATH=/opt/esp/idf ./firmware/build.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: traboda-firmware
+          path: firmware/dist/*.bin
+
+  simulator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build MicroPython (unix) and mpy-cross
+        run: |
+          git clone --depth 1 -b v1.29.0 https://github.com/micropython/micropython.git firmware/.build/micropython
+          make -C firmware/.build/micropython/mpy-cross -j"$(nproc)"
+          make -C firmware/.build/micropython/ports/unix submodules
+          make -C firmware/.build/micropython/ports/unix -j"$(nproc)"
+      - name: Smoke tests
+        run: python3 tests/smoke.py --micropython firmware/.build/micropython/ports/unix/build-standard/micropython
