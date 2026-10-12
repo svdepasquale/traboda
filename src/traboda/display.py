@@ -51,9 +51,8 @@ def unswap(c):
 
 
 class Display:
-    def __init__(self, spi, expander, baudrate=40_000_000):
+    def __init__(self, spi, expander):
         self.spi = spi
-        self.baudrate = baudrate
         self.cs = Pin(board.LCD_CS, Pin.OUT, value=1)
         self.dc = Pin(board.LCD_DC, Pin.OUT, value=1)
         self.buf = bytearray(W * H * 2)
@@ -63,6 +62,8 @@ class Display:
         self.brightness = 0
         self._cmdbuf = bytearray(1)
         self._win = bytearray(4)
+        self._scratch = bytearray(W * H * 2)    # show_rect gathers rows here
+        self._smv = memoryview(self._scratch)
         self.asleep = False
         expander.set(board.EX_LCD_RESET, 0)
         time.sleep_ms(20)
@@ -100,23 +101,57 @@ class Display:
             return
         y0 = max(0, y0)
         y1 = min(H, y1)
-        w = self._win
-        w[0] = 0
-        w[1] = 0
-        w[2] = (W - 1) >> 8
-        w[3] = (W - 1) & 0xFF
-        self._cmd(0x2A, w)
-        w[0] = y0 >> 8
-        w[1] = y0 & 0xFF
-        w[2] = (y1 - 1) >> 8
-        w[3] = (y1 - 1) & 0xFF
-        self._cmd(0x2B, w)
+        self._window(0, y0, W - 1, y1 - 1)
         self._cmdbuf[0] = 0x2C
         self.cs(0)
         self.dc(0)
         self.spi.write(self._cmdbuf)
         self.dc(1)
         self.spi.write(self.mv[y0 * W * 2:y1 * W * 2])
+        self.cs(1)
+
+    def _window(self, x0, y0, x1, y1):
+        w = self._win
+        w[0] = x0 >> 8
+        w[1] = x0 & 0xFF
+        w[2] = x1 >> 8
+        w[3] = x1 & 0xFF
+        self._cmd(0x2A, w)
+        w[0] = y0 >> 8
+        w[1] = y0 & 0xFF
+        w[2] = y1 >> 8
+        w[3] = y1 & 0xFF
+        self._cmd(0x2B, w)
+
+    def show_rect(self, x, y, w, h):
+        """Push one rectangle: cheaper than a band when the change is narrow (a sprite, a
+        pipe edge, two snake cells far apart)."""
+        if self.asleep:
+            return
+        if x < 0:
+            w += x
+            x = 0
+        if y < 0:
+            h += y
+            y = 0
+        w = min(w, W - x)
+        h = min(h, H - y)
+        if w <= 0 or h <= 0:
+            return
+        if w == W:
+            self.show(y, y + h)
+            return
+        # framebuf clips a blit to its destination, so blitting the whole screen at
+        # (-x, -y) into a w x h buffer gathers the rectangle in C (~1.5 ms for 40x140;
+        # a per-row memoryview copy loop took ~9 ms per row on this port).
+        framebuf.FrameBuffer(self._scratch, w, h, framebuf.RGB565).blit(self.fb, -x, -y)
+        self._window(x, y, x + w - 1, y + h - 1)
+        self._cmdbuf[0] = 0x2C
+        self.cs(0)
+        self.dc(0)
+        self.spi.write(self._cmdbuf)
+        self.dc(1)
+        self.spi.write(self._smv[:w * h * 2])
         self.cs(1)
 
     def set_brightness(self, percent):

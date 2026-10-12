@@ -84,7 +84,10 @@ sys.show()                              # push all; sys.show(y0, y1) pushes rows
 * Icons: 16x16 pixel art, `icons.draw(gfx.fb, "name", x, y, scale)` (scale 1 = 16 px,
   2 = 32 px). New icons: `icons.register("name", rows)` at import time, 16 strings of 16
   palette letters (see the icons.py docstring).
-* A full-screen push takes ~33 ms; push only the band that changed when animating.
+* A full-screen push takes ~33 ms (a band of N rows ~N x 0.14 ms). When animating,
+  push only what changed: `sys.show(y0, y1)` for a full-width band, or
+  `sys.show_rect(x, y, w, h)` for a rectangle (best for sprites, narrow columns, or two
+  changes far apart: push two small rects, not one tall band).
 
 ## Widgets (`traboda.ui`)
 

@@ -49,6 +49,11 @@ EX_LED_POWER = 15       # P1.7, LED rail switch
 AW9523_ADDR = 0x58
 ES8156_ADDR = 0x08
 
+# 40 MHz: a full frame in ~33 ms. At 80 MHz the panel still lights up but text and icons
+# come out slightly misaligned (checked on the badge). Drivers sharing the bus at a lower
+# rate put it back to this when done.
+DISPLAY_BAUD = 40_000_000
+
 _i2c = None
 _spi = None
 
@@ -60,7 +65,7 @@ def i2c():
     return _i2c
 
 
-def spi(baudrate=40_000_000):
+def spi(baudrate=DISPLAY_BAUD):
     """The shared SPI bus (display and RFID). Re-init with another baudrate as needed."""
     global _spi
     if _spi is None:

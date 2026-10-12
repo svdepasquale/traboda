@@ -96,6 +96,9 @@ class System:
     def show(self, y0=0, y1=240):
         self.display.show(y0, y1)
 
+    def show_rect(self, x, y, w, h):
+        self.display.show_rect(x, y, w, h)
+
     def clock_text(self):
         if not tz.clock_valid():
             return "--:--"
