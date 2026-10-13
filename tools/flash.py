@@ -93,14 +93,18 @@ def main():
             offset, size = EXPECTED[label]
             subprocess.run(esptool + ["--after", "no-reset", "erase-region", hex(offset), hex(size)], check=True)
 
-    # "--after watchdog-reset": a reset through the USB-Serial-JTAG's RTS line latches the
-    # download strap and leaves the chip in the ROM bootloader; the watchdog reboots it clean.
     subprocess.run(esptool + [
-        "--after", "watchdog-reset", "write-flash", "--flash-mode", "keep", "--flash-freq", "keep", "--flash-size", "16MB",
+        "--after", "no-reset", "write-flash", "--flash-mode", "keep", "--flash-freq", "keep",
+        "--flash-size", "16MB",
         "0x0", files["bootloader.bin"],
         "0x8000", files["partition-table.bin"],
         "0x10000", files["traboda.bin"],
     ], check=True)
+    # A reset through the USB-Serial-JTAG's RTS line latches the download strap and leaves
+    # the chip in the ROM bootloader; the watchdog reboots it clean. The port vanishes under
+    # esptool while it does, which it may report as an error: the image is already verified.
+    subprocess.run(esptool + ["--before", "no-reset", "--after", "watchdog-reset", "chip-id"],
+                   capture_output=True)
     print("done: Traboda flashed on %s (Retro-Go untouched)" % port)
 
 
