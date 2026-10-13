@@ -9,7 +9,7 @@ AUTH_OPEN = 0
 AUTH_WPA2_PSK = 3
 
 _NETS = (
-    (b"CasaSilvio", b"\x11\x22\x33\x44\x55\x66", 6, -48, 3, False),
+    (b"CasaMia", b"\x11\x22\x33\x44\x55\x66", 6, -48, 3, False),
     (b"FRITZ!Box 7590", b"\x11\x22\x33\x44\x55\x67", 1, -61, 3, False),
     (b"RomHackCamp", b"\x11\x22\x33\x44\x55\x68", 11, -70, 0, False),
     (b"Vodafone-WiFi", b"\x11\x22\x33\x44\x55\x69", 6, -79, 3, False),

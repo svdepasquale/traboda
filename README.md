@@ -11,6 +11,8 @@ Bluetooth tools, weather, a name-tag mode, a synth, and a dashboard fed by your 
 It keeps the badge's stock **Retro-Go** emulators in their own partitions and boots
 into them from its launcher, so the badge stays a retro console too.
 
+![Traboda OS screens: home, Walkman, games, clock, LED studio, NFC, synth, Wi-Fi, quick panel](docs/img/screens.png)
+
 ## The badge
 
 | | |
