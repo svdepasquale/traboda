@@ -27,6 +27,15 @@ done
 
 cp "$BOARD_DIR/partitions.csv" "$MPY_DIR/ports/esp32/partitions-traboda.csv"
 
+# export.sh looks for a Python venv named after the current python3; after a Homebrew
+# Python upgrade that is not the one install.sh created, so point it at an existing one.
+if [ -z "${IDF_PYTHON_ENV_PATH:-}" ]; then
+    for env in "$HOME"/.espressif/python_env/idf5.5_py*_env; do
+        if [ -x "$env/bin/python" ]; then
+            export IDF_PYTHON_ENV_PATH="$env"
+        fi
+    done
+fi
 # shellcheck disable=SC1091
 source "$IDF_PATH/export.sh" >/dev/null
 
