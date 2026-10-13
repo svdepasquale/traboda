@@ -38,8 +38,10 @@ def _draw_clock(sys):
         line = mark + title_of(p.current)
         gfx.round_rect(8, ui.STATUS_H + 60, 304, 18, 5, ui.PANEL)
         gfx.text(gfx.ellipsize(line, 290), 14, ui.STATUS_H + 61, ui.CYAN if not sys.audio.paused else ui.DIM)
-    elif sys.errors:
-        gfx.text(gfx.ellipsize("! " + sys.errors[-1], 300), 12, ui.STATUS_H + 62, ui.ORANGE, "small")
+    else:
+        shown = [e for e in sys.errors if not e.startswith("sd:")]   # no card is not a fault
+        if shown:
+            gfx.text(gfx.ellipsize("! " + shown[-1], 300), 12, ui.STATUS_H + 62, ui.ORANGE, "small")
 
 
 def _draw_grid(sel):

@@ -365,6 +365,10 @@ class System:
     def mount_sd(self):
         if self.sd_mounted:
             return True
+        # two reads 20 ms apart: right after boot the detect line can read low for a moment
+        if not self.power.sd_present():
+            return False
+        time.sleep_ms(20)
         if not self.power.sd_present():
             return False
         try:

@@ -11,6 +11,7 @@ the OS and drops to the REPL. tools/badgectl.py speaks this protocol:
   @@TRB stats <json>          data for the Companion app (CPU, RAM, battery, track...)
   @@TRB app <name>            open an app
   @@TRB wifi <json>           {"ssid": ..., "password": ...}: save and join a network
+  @@TRB info                  -> @@INFO <json> (version, app, errors, battery, heap, uptime)
 """
 
 import binascii
@@ -77,6 +78,15 @@ class HostLink:
                 pass
         elif name == "app":
             s.request_app(arg.strip())
+        elif name == "info":
+            import gc
+            import time
+            from . import VERSION, net
+            info = {"version": VERSION, "app": s.app_name, "errors": s.errors[-10:],
+                    "battery": s.battery, "charging": s.charging, "heap": gc.mem_free(),
+                    "uptime_s": time.ticks_diff(time.ticks_ms(), s._started) // 1000,
+                    "wifi": net.status, "ip": net.ip(), "sd": s.sd_mounted}
+            print("@@INFO " + json.dumps(info))
         elif name == "wifi":
             try:
                 cfg = json.loads(arg)

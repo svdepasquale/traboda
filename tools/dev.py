@@ -12,6 +12,7 @@
   tools/dev.py key NAME [ms] press a key on the running OS (up down left right A B play prev next)
   tools/dev.py time         set the badge clock from the Mac
   tools/dev.py toast TEXT   show a notification on the badge
+  tools/dev.py info         version, open app, recent errors, battery, heap, Wi-Fi
   tools/dev.py wifi [SSID]  give the badge a Wi-Fi network: the password comes from the
                             macOS keychain (a system dialog asks you), goes over USB to the
                             running OS and is stored on the badge only
@@ -39,8 +40,8 @@ BUILD = os.path.join(ROOT, "firmware", ".build", "overlay")
 MPY_CROSS = os.path.join(ROOT, "firmware", ".build", "micropython", "mpy-cross", "build", "mpy-cross")
 
 
-def mpremote(port, *args, check=True):
-    return subprocess.run(["mpremote", "connect", port] + list(args), check=check)
+def mpremote(port, *args, check=True, timeout=None):
+    return subprocess.run(["mpremote", "connect", port] + list(args), check=check, timeout=timeout)
 
 
 def compile_overlay():
@@ -201,7 +202,11 @@ def main():
         clean(port)
     elif cmd == "run":
         # A soft reset inside mpremote's raw REPL does not run main.py: reboot instead.
-        mpremote(port, "exec", "import machine; machine.reset()", check=False)
+        # mpremote can hang once the port vanishes under it, hence the timeout.
+        try:
+            mpremote(port, "exec", "import machine; machine.reset()", check=False, timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
     elif cmd == "snap":
         snap(port, args[0] if args else "snap.png")
     elif cmd == "key":
@@ -212,6 +217,10 @@ def main():
         command(port, "toast " + " ".join(args))
     elif cmd == "wifi":
         wifi(port, args[0] if args else None)
+    elif cmd == "info":
+        reply = command(port, "info", until=b"\n", timeout=3)
+        line = [ln for ln in reply.decode(errors="replace").splitlines() if ln.startswith("@@INFO ")]
+        print(line[-1][7:] if line else "no answer (is the OS running?)")
     else:
         sys.exit(__doc__)
 
