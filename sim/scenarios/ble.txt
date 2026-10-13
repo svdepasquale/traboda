@@ -8,3 +8,5 @@ wait:800,key:down,key:A,wait:1300,snap:vicini,key:A,wait:900,snap:trova_badge,ho
 wait:800,key:down,key:down,key:A,wait:500,snap:info,hold:A,wait:400,snap:radice,hold:A,wait:500,snap:launcher
 # Quick panel over the finder then REDRAW; B held = back to the list, then HOME through it to the launcher.
 wait:800,key:A,wait:1200,key:A,wait:700,hold:play,wait:400,snap:pannello,hold:A,wait:500,snap:ridisegno,hold:B,wait:800,snap:home
+# Side and transport keys (no track loaded: plain clicks) change nothing; B pressed backs out one level at a time.
+wait:800,key:A,wait:1300,key:left,key:right,key:play,key:next,key:prev,wait:300,snap:tasti,key:A,wait:600,key:play,key:next,key:left,wait:300,snap:trova_tasti,key:B,wait:400,snap:indietro_b,key:B,wait:400,snap:radice_b,hold:A,wait:500,snap:launcher

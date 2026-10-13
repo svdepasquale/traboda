@@ -62,10 +62,18 @@ icons.register("bt_scan", (
     "................",
 ))
 
+# Bluetooth SIG company identifiers (manufacturer data) and member service UUIDs
 _VENDORS = {0x004C: "Apple", 0x0006: "Microsoft", 0x0075: "Samsung", 0x00E0: "Google",
-            0x0157: "Xiaomi"}
+            0x018E: "Google", 0x038F: "Xiaomi", 0x0157: "Huami", 0x027D: "Huawei",
+            0x072F: "OnePlus", 0x079A: "Oppo", 0x0CCB: "Nothing", 0x012D: "Sony",
+            0x00C4: "LG", 0x0087: "Garmin", 0x009E: "Bose", 0x0057: "Harman",
+            0x00CC: "Beats", 0x0494: "Sennheiser", 0x05A7: "Sonos", 0x0171: "Amazon",
+            0x01AB: "Meta", 0x058E: "Meta", 0x01DA: "Logitech", 0x067C: "Tile",
+            0x0059: "Nordic", 0x02E5: "Espressif", 0x0499: "Ruuvi"}
 _UUIDS = {0xFE9F: "Google", 0xFE2C: "Google", 0xFEAA: "Eddystone", 0xFE95: "Xiaomi",
-          0xFD5A: "Samsung"}
+          0xFDAB: "Xiaomi", 0xFD5A: "Samsung", 0xFEED: "Tile", 0xFEEC: "Tile", 0xFD84: "Tile",
+          0xFE03: "Amazon", 0xFE07: "Sonos", 0xFEBE: "Bose", 0xFE1F: "Garmin",
+          0xFD5F: "Meta", 0xFE59: "Nordic"}
 _APPLE = {0x07: "AirPods", 0x09: "AirPlay", 0x0C: "Handoff", 0x10: "Nearby", 0x12: "Find My"}
 _ZONES = ((-50, "Vicinissimo"), (-60, "Molto vicino"), (-70, "Vicino"), (-80, "Lontano"))
 _ABOUT = {
@@ -97,8 +105,9 @@ def _irq(event, data):
     global _done
     if event == _IRQ_SCAN_RESULT:
         box = _resp if data[2] == 4 else _inbox
-        if len(box) < INBOX_MAX:
-            box[bytes(data[1])] = (data[0], data[2], data[3], bytes(data[4]))
+        addr = bytes(data[1])
+        if addr in box or len(box) < INBOX_MAX:     # a full inbox still takes fresh samples
+            box[addr] = (data[0], data[2], data[3], bytes(data[4]))
     elif event == _IRQ_SCAN_DONE:
         _done = True
 
@@ -300,7 +309,12 @@ class _Radio:
         self._halt()
 
     def advertise(self, payload):
-        self.ble.gap_advertise(ADV_US, adv_data=payload, connectable=False)
+        """Starts our advert; False when the stack refuses it (the caller retries)."""
+        try:
+            self.ble.gap_advertise(ADV_US, adv_data=payload, connectable=False)
+            return True
+        except OSError:
+            return False
 
     def quiet(self):
         try:
@@ -430,7 +444,8 @@ def _empty(y, title, note, failed):
 
 
 def _bar_key(sys):
-    return sys.clock_text(), sys.battery, sys.charging
+    a = sys.audio
+    return sys.clock_text(), sys.battery, sys.charging, sys.wifi_connected(), a.playing, a.paused
 
 
 def _hints(has_items):
@@ -585,8 +600,11 @@ async def _scanner(sys, radio):
 # -- finder -------------------------------------------------------------------------------
 
 def _find_head(sys, d, addr):
-    ui.header(sys, gfx.ellipsize(_label(d) if d else _mac(addr), W - 44, "title"), "bt_scan")
+    """Header and footer; returns the title drawn, so a name learned later redraws it."""
+    title = _label(d) if d else _mac(addr)
+    ui.header(sys, gfx.ellipsize(title, W - 44, "title"), "bt_scan")
     ui.footer([("A", "Muto" if _sound else "Suono"), ("A tieni", "Indietro")])
+    return title
 
 
 def _find_body(d, addr, r, lost, hist, now, note, shown):
@@ -640,7 +658,7 @@ async def _find(sys, radio, addr):
     stamp = d.last if d else 0
     hist = [None] * HIST
     poll = draw = beep = flash = time.ticks_ms()
-    leds = bar = None
+    leds = bar = title = None
     shown = [None] * 4
     full = True
     try:
@@ -652,6 +670,8 @@ async def _find(sys, radio, addr):
                 if d and d.last != stamp:
                     stamp = d.last
                     ema += (d.raw - ema) * 0.35
+                if d and _label(d) != title:
+                    full = True
                 poll = time.ticks_add(now, 200)
             lost = d is None or time.ticks_diff(now, d.last) > LOST_MS
             r = round(ema)
@@ -680,7 +700,7 @@ async def _find(sys, radio, addr):
                 draw = time.ticks_add(now, 250)
             if full or tick:
                 if full:
-                    _find_head(sys, d, addr)
+                    title = _find_head(sys, d, addr)
                     bar = _bar_key(sys)
                     shown = [None] * 4
                 # a playing track skips tone() (there is no mixer): say why it is silent
@@ -773,11 +793,7 @@ def _near_list(view, now, failed):
 
 async def _nearby(sys, radio):
     payload, name = _advert()
-    try:
-        radio.advertise(payload)
-        ok = True
-    except OSError:
-        ok = False
+    ok = radio.advertise(payload)
     radio.scan(False, NEAR_US)
     view = _Picker(NEAR_ROWS)
     due = time.ticks_ms()
@@ -789,6 +805,7 @@ async def _nearby(sys, radio):
             now = time.ticks_ms()
             dirty = False
             if time.ticks_diff(now, due) >= 0:
+                ok = ok or radio.advertise(payload)
                 _refresh(radio, now)
                 fresh, here = _badges(now)
                 view.update(fresh, now)
