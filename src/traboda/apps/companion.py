@@ -59,17 +59,13 @@ def _load_color(pct):
     return ui.GREEN if pct < 50 else ui.YELLOW if pct < 80 else ui.RED
 
 
-def _fit(s, px, f="text"):
-    n = px // gfx.font(f).w
-    return s if len(s) <= n else s[:max(0, n - 1)] + ("." if f == "small" else "…")
-
-
 # -- LEDs ----------------------------------------------------------------------------------
 
 def _leds_cpu(sys, cpu):
-    """Both rows fill left to right with the load, green to red."""
+    """Both rows fill left to right with the load, green to red, unless the user turned
+    the LEDs off."""
     leds = sys.leds
-    if not leds:
+    if not leds or not settings.get("leds_on"):
         return
     if leds.effect != "custom":
         leds.set_effect("custom")
@@ -115,7 +111,7 @@ def _draw_head(host, clock):
     if clock:
         x -= gfx.text(clock, x, 22, ui.CYAN, align=-1) + 8
     if host:
-        gfx.text(_fit(host, x - 150, "small"), x, 25, ui.DIM, "small", align=-1)
+        gfx.text(gfx.ellipsize(host, x - 150, "small"), x, 25, ui.DIM, "small", align=-1)
 
 
 def _draw_cpu(cpu, hist, count):
@@ -166,9 +162,9 @@ def _draw_music(track, artist, app, playing):
         gfx.text("Niente in riproduzione", 38, 191, ui.DIM)
         return
     line = track + (" - " + artist if artist else "")
-    gfx.text(_fit(line, 266), 38, 183, ui.TEXT)
-    state = "in riproduzione" if playing else "in pausa"
-    gfx.text(_fit((app + " · " if app else "") + state, 266, "small"), 38, 202, ui.DIM, "small")
+    gfx.text(gfx.ellipsize(line, 266), 38, 183, ui.TEXT)
+    state = (app + " · " if app else "") + ("in riproduzione" if playing else "in pausa")
+    gfx.text(gfx.ellipsize(state, 266, "small"), 38, 202, ui.DIM, "small")
 
 
 def _update(s, hist, count, seq, shown):
@@ -258,7 +254,8 @@ async def main(sys):
                 shown["age"] = age_s
                 if bands or full:
                     _draw_age(age_s)
-            status = (sys.clock_text(), sys.battery, sys.charging, sys.audio.playing)
+            status = (sys.clock_text(), sys.battery, sys.charging, sys.wifi_connected(),
+                      sys.audio.playing, sys.audio.paused)
             if status != shown.get("status"):
                 shown["status"] = status
                 if not full:

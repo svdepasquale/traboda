@@ -1,10 +1,12 @@
 # Internal memory root, into sd/music (sizes, counts), back up with left twice.
 wait:800,snap:root,key:A,wait:300,key:A,wait:300,snap:music,key:left,wait:300,snap:sd,key:left,wait:300,snap:root_back
-# A WAV: actions menu, play it (toast, note in the status bar), then its details.
-wait:800,key:A,wait:300,key:A,wait:300,key:A,wait:300,snap:actions,key:A,wait:700,snap:playing,key:A,wait:300,key:down,key:down,key:A,wait:400,snap:info
+# A WAV: actions menu, play it (toast, note in the status bar); the menu stays, then its details and back to it.
+wait:800,key:A,wait:300,key:A,wait:300,key:A,wait:300,snap:actions,key:A,wait:700,snap:playing,wait:600,key:down,key:down,key:A,wait:400,snap:info,hold:A,wait:300,snap:actions_again
 # Hex view of a WAV: scroll a row, a page, then HOME (B held) goes to the launcher.
 wait:800,key:A,wait:300,key:A,wait:300,key:A,wait:300,key:down,key:A,wait:400,snap:hex,key:down,key:right,wait:200,snap:hex_page,hold:B,wait:500,snap:home
-# Delete a WAV: cancel at the confirm, then delete it; two tracks are left.
-wait:800,key:A,wait:300,key:A,wait:300,key:A,wait:300,key:up,key:A,wait:300,snap:confirm,key:A,wait:300,key:A,wait:300,key:up,key:A,wait:300,key:right,key:A,wait:400,snap:deleted
+# Delete a WAV: cancel at the confirm (the menu stays), then delete it; back in the folder, two tracks are left.
+wait:800,key:A,wait:300,key:A,wait:300,key:A,wait:300,key:up,key:A,wait:300,snap:confirm,key:A,wait:300,snap:cancelled,key:A,wait:300,key:right,key:A,wait:400,snap:deleted
 # Out level by level with A held, then out of the app.
 wait:800,key:A,wait:300,key:A,wait:300,hold:A,wait:300,hold:A,wait:300,snap:root,hold:A,wait:500,snap:launcher
+# With a card: the two volumes, the card's root, back to the volumes, the internal memory (the mount point is hidden).
+wait:800,sd:1,hold:B,wait:500,app:files,wait:800,snap:volumes,key:down,key:A,wait:400,snap:sd_root,hold:A,wait:300,snap:volumes_back,key:up,key:A,wait:400,snap:internal_root

@@ -139,23 +139,6 @@ icons.register("f_trash", (
 ))
 
 
-class _Nav:
-    """The System as the widgets see it, noting HOME so that every nested screen leaves."""
-
-    def __init__(self, sys):
-        self.sys = sys
-        self.home = False
-
-    def __getattr__(self, name):
-        return getattr(self.sys, name)
-
-    async def event(self, timeout_ms=None):
-        ev = await self.sys.event(timeout_ms)
-        if ev is not None and B.kind(ev) == self.sys.HOME:
-            self.home = True
-        return ev
-
-
 # -- helpers -------------------------------------------------------------------------------
 
 def _root(path):
@@ -213,12 +196,6 @@ def _why(e):
     return _ERRORS.get(code, "errore %s" % code)
 
 
-def _fit(s, px, f="text"):
-    """Ellipsizes for any font ("small" has no ellipsis glyph)."""
-    n = px // gfx.font(f).w
-    return s if len(s) <= n else s[:max(0, n - 1)] + ("." if f == "small" else "…")
-
-
 def _tail(s, n):
     return s if len(s) <= n else "«" + s[len(s) - n + 1:]
 
@@ -241,12 +218,15 @@ def _icon(name):
     return "f_text" if low.endswith(TEXT_EXT) else "f_file"
 
 
-def _scan(folder):
+def _scan(sys, folder):
     """([(name, is_dir, size)] folders first, then by name; how many names were skipped).
     The badge's FAT keeps names in code page 437, so an accented name written by a
-    computer is not UTF-8 and cannot become a str. Raises OSError."""
+    computer is not UTF-8 and cannot become a str. A slow listing (a big folder on the
+    card) puts up a notice. Raises OSError."""
     out = []
     bad = 0
+    t0 = time.ticks_ms()
+    slow = False
     it = os.ilistdir(folder)
     while True:
         try:
@@ -264,6 +244,10 @@ def _scan(folder):
             except OSError:
                 pass
         out.append((e[0], is_dir, size))
+        if not slow and time.ticks_diff(time.ticks_ms(), t0) > 150:
+            slow = True
+            y0, y1 = ui.toast_draw("Caricamento…")
+            sys.show(y0, y1)
     out.sort(key=lambda e: (not e[1], e[0].lower()))
     return out, bad
 
@@ -316,13 +300,12 @@ def _items(entries, up):
     return items
 
 
-async def _listing(nav, vols, folder, focus, at, up):
+async def _listing(sys, vols, folder, focus, at, up):
     """One folder. Returns (tag, row) for the row picked (or ("up",) for back), or None."""
-    sys = nav.sys
     note = None
     bad = 0
     try:
-        entries, bad = _scan(folder)
+        entries, bad = _scan(sys, folder)
     except OSError as e:
         entries = []
         note = "Cartella non leggibile: %s" % _why(e)
@@ -370,14 +353,14 @@ async def _listing(nav, vols, folder, focus, at, up):
             full = False
         else:
             sys.show(LIST_Y, LIST_Y + ROWS * ui.ROW_H)
-        ev = await nav.event()
+        ev = await sys.event()
         if ev is None:
             continue
         k, kind = B.key(ev), B.kind(ev)
         if kind == sys.REDRAW:
             full = True
             continue
-        if nav.home:
+        if sys.leaving():
             return None
         if sys.is_back(ev):
             return (("up",), sel) if up else None
@@ -399,7 +382,8 @@ async def _listing(nav, vols, folder, focus, at, up):
 
 # -- file actions --------------------------------------------------------------------------
 
-async def _actions(nav, vols, folder, name, size):
+async def _actions(sys, vols, folder, name, size):
+    """The menu of one file, until back or the file is deleted."""
     path = _join(folder, name)
     items = []
     if name.lower().endswith(".wav"):
@@ -409,41 +393,42 @@ async def _actions(nav, vols, folder, name, size):
               ui.Item("Elimina", None, "f_trash", tag="delete")]
     label = _size(size)
     title = gfx.ellipsize(name, 268 - len(label) * 8, "title")
-    it = await ui.menu(nav, title, items, icon=_icon(name),
-                       hints=[("A", "Ok"), ("A tieni", "Indietro")],
-                       on_draw=lambda _: gfx.text(label, 310, 22, ui.DIM, align=-1))
-    if it is None or nav.home:
-        return
-    if it.tag == "play":
-        await _play(nav, path, name)
-    elif it.tag == "view":
-        await _view(nav, path, name, size)
-    elif it.tag == "info":
-        await _info(nav, vols, path, name, size)
-    else:
-        await _delete(nav, path, name)
+    sel = 0
+    while not sys.leaving():
+        it = await ui.menu(sys, title, items, icon=_icon(name), sel=sel,
+                           on_draw=lambda _: gfx.text(label, 310, 22, ui.DIM, align=-1))
+        if it is None:
+            return
+        sel = items.index(it)
+        if it.tag == "play":
+            await _play(sys, path)
+        elif it.tag == "view":
+            await _view(sys, path, name, size)
+        elif it.tag == "info":
+            await _info(sys, vols, path, name, size)
+        elif await _delete(sys, path, name):
+            return
 
 
-async def _play(nav, path, name):
-    sys = nav.sys
+async def _play(sys, path):
     sys.player.load([path], 0)
     await sys.sleep_ms(250)                 # a bad file fails at once
     if sys.audio.error:
         err = sys.audio.error
         sys.player.load([])
-        await ui.dialog(nav, "Riproduci", "Impossibile riprodurre: %s." % _audio_error(err))
+        await ui.dialog(sys, "Riproduci", "Impossibile riprodurre: %s." % _audio_error(err))
     else:
-        await ui.toast(nav, "♪ " + title_of(path), 900)
+        await ui.toast(sys, "♪ " + title_of(path), 900)
 
 
-async def _delete(nav, path, name):
-    sys = nav.sys
-    if await ui.dialog(nav, "Elimina", "Eliminare «%s»?" % name, ("Annulla", "Elimina")) != 1:
-        return
+async def _delete(sys, path, name):
+    """Asks (twice for the files the OS needs), then deletes. True when the file is gone."""
+    if await ui.dialog(sys, "Elimina", "Eliminare «%s»?" % name, ("Annulla", "Elimina")) != 1:
+        return False
     critical = name in CRITICAL and path == paths.data(name)
-    if critical and await ui.dialog(nav, "Elimini " + name + "?", CRITICAL[name],
+    if critical and await ui.dialog(sys, "Elimini " + name + "?", CRITICAL[name],
                                     ("Annulla", "Elimina"), accent=ui.RED) != 1:
-        return
+        return False
     p = sys.player
     cur = p.current
     if cur == path:
@@ -452,13 +437,14 @@ async def _delete(nav, path, name):
     try:
         os.remove(path)
     except OSError as e:
-        await ui.dialog(nav, "Elimina", "Impossibile eliminare: %s." % _why(e))
-        return
+        await ui.dialog(sys, "Elimina", "Impossibile eliminare: %s." % _why(e))
+        return False
     if path in p.queue:                     # or the queue stops at the missing track
         p.queue = [t for t in p.queue if t != path]
         p.index = p.queue.index(cur) if cur in p.queue else -1
     if critical and name == "settings.json":
         settings.load()                     # or the next save writes the old values back
+    return True
 
 
 # -- viewer --------------------------------------------------------------------------------
@@ -473,7 +459,7 @@ def _frame(sys, hints):
 def _title(name, info):
     gfx.fill_rect(0, ui.STATUS_H, 320, TOP_Y - 3 - ui.STATUS_H, ui.BG)
     gfx.text(info, 310, 21, ui.CYAN, align=-1)
-    gfx.text(_fit(name, 300 - len(info) * 8 - 12), 10, 21, ui.TEXT)
+    gfx.text(gfx.ellipsize(name, 300 - len(info) * 8 - 12), 10, 21, ui.TEXT)
 
 
 def _scrollbar(top, total):
@@ -489,32 +475,33 @@ def _step(k, top, last):
     return max(0, min(last, top + d))
 
 
-async def _view(nav, path, name, size):
-    sys = nav.sys
+async def _view(sys, path, name, size):
     if size > 16 * 1024:
-        ui.toast_draw("Caricamento…")
-        sys.show()
+        y0, y1 = ui.toast_draw("Caricamento…")
+        sys.show(y0, y1)
     try:
         with open(path, "rb") as f:
             data = f.read(VIEW_CAP)
     except OSError as e:
-        await ui.dialog(nav, name, "Impossibile leggere il file: %s." % _why(e))
+        await ui.dialog(sys, name, "Impossibile leggere il file: %s." % _why(e))
         return
+    cut = size > VIEW_CAP and data.rfind(b"\n") + 1
+    if cut:
+        data = data[:cut]                   # whole lines: the cap never splits a character
     text = _text(data)
     if text is None:
-        await _hex(nav, path, name, size)
+        await _hex(sys, path, name, size)
         return
-    lines = _wrap(text, COLS)
+    lines = _wrap(text[:-1] if text.endswith("\n") else text, COLS)
     if size > VIEW_CAP:
         lines += ["", "[ mostrati i primi %d KB di %s ]" % (VIEW_CAP // 1024, _size(size))]
     elif not data:
         lines = ["(file vuoto)"]
-    await _pager(nav, name, lines)
+    await _pager(sys, name, lines)
 
 
-async def _scroll(nav, name, total, draw):
+async def _scroll(sys, name, total, draw):
     """The pager loop over total lines: draw(top) paints them and returns the header info."""
-    sys = nav.sys
     last = max(0, total - PAGE)
     top = 0
     full = dirty = True
@@ -530,7 +517,7 @@ async def _scroll(nav, name, total, draw):
             else:
                 sys.show(ui.STATUS_H, TOP_Y + PAGE * LINE_H)
             full = dirty = False
-        ev = await nav.event()
+        ev = await sys.event()
         if ev is None:
             continue
         k, kind = B.key(ev), B.kind(ev)
@@ -545,7 +532,7 @@ async def _scroll(nav, name, total, draw):
                 dirty = True
 
 
-async def _pager(nav, name, lines):
+async def _pager(sys, name, lines):
     total = len(lines)
 
     def draw(top):
@@ -553,14 +540,14 @@ async def _pager(nav, name, lines):
             gfx.text(lines[top + i], 8, TOP_Y + i * LINE_H, ui.TEXT, "small")
         return "%d-%d/%d" % (top + 1, min(top + PAGE, total), total)
 
-    await _scroll(nav, name, total, draw)
+    await _scroll(sys, name, total, draw)
 
 
-async def _hex(nav, path, name, size):
+async def _hex(sys, path, name, size):
     try:
         f = open(path, "rb")
     except OSError as e:
-        await ui.dialog(nav, name, "Impossibile aprire il file: %s." % _why(e))
+        await ui.dialog(sys, name, "Impossibile aprire il file: %s." % _why(e))
         return
     buf = bytearray(PAGE * 8)
 
@@ -585,7 +572,7 @@ async def _hex(nav, path, name, size):
         return "hex %d%%" % ((top * 8 + n) * 100 // size if size else 100)
 
     try:
-        await _scroll(nav, name, (size + 7) // 8, draw)
+        await _scroll(sys, name, (size + 7) // 8, draw)
     finally:
         f.close()
 
@@ -621,8 +608,7 @@ def _kind(path, name):
     return ("Testo" if _text(head) is not None else "Binario"), None
 
 
-async def _info(nav, vols, path, name, size):
-    sys = nav.sys
+async def _info(sys, vols, path, name, size):
     title = gfx.ellipsize(name, 276, "title")
     rows = [("Nome", name)] if title != name else []
     rows.append(("Cartella", _where(vols, _parent(path))))
@@ -654,7 +640,7 @@ async def _info(nav, vols, path, name, size):
             ui.footer([("A tieni", "Indietro")])
             sys.show()
             full = False
-        ev = await nav.event()
+        ev = await sys.event()
         if ev is None:
             continue
         k, kind = B.key(ev), B.kind(ev)
@@ -671,24 +657,23 @@ async def main(sys):
         sys.mount_sd()
     except OSError:
         pass
-    nav = _Nav(sys)
     vols = [("Memoria interna", _root(paths.ROOT), "f_chip")]
     if sys.sd_mounted:
         vols.append(("Scheda SD", _root(paths.SD), "f_sd"))
     roots = [v[1] for v in vols]
     folder = roots[0] if len(vols) == 1 else None
     focus, at, vsel = None, 0, 0
-    while not nav.home:
+    while not sys.leaving():
         if folder is None:
             items = [ui.Item(label, _free(root), icon, tag=root) for label, root, icon in vols]
-            it = await ui.menu(nav, TITLE, items, icon=ICON, sel=vsel,
+            it = await ui.menu(sys, TITLE, items, icon=ICON, sel=vsel,
                                hints=[("A", "Apri"), ("A tieni", "Esci")])
             if it is None:
                 return
             vsel = items.index(it)
             folder, focus, at = it.tag, None, 0
             continue
-        r = await _listing(nav, vols, folder, focus, at, folder != roots[0] or len(vols) > 1)
+        r = await _listing(sys, vols, folder, focus, at, folder != roots[0] or len(vols) > 1)
         if r is None:
             return
         tag, at = r
@@ -700,5 +685,5 @@ async def main(sys):
         elif tag[0] == "dir":
             folder, focus, at = _join(folder, tag[1]), None, 0
         else:
-            await _actions(nav, vols, folder, tag[1], tag[2])
+            await _actions(sys, vols, folder, tag[1], tag[2])
             focus = tag[1]

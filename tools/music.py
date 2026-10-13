@@ -67,13 +67,15 @@ def minutes(size, hq):
     return "%d:%02d" % (s // 60, s % 60)
 
 
-def fit(files, free):
-    """The files that fit in free bytes (keeping RESERVE), in order; reports the others."""
+def fit(files, free, cost=lambda size: size):
+    """The files that fit in free bytes (keeping RESERVE), in order; reports the others.
+    cost(size) is what a file takes on the target filesystem."""
     chosen = []
     for path, name, size in files:
-        if size + RESERVE <= free:
+        need = cost(size)
+        if need + RESERVE <= free:
             chosen.append((path, name, size))
-            free -= size
+            free -= need
         else:
             print("  no room for %s (%s, %s free)" % (name, human(size), human(max(0, free - RESERVE))))
     return chosen
@@ -85,33 +87,36 @@ def mpremote(port, *args, capture=False):
 
 
 def badge_free(port):
-    """Makes /music on the badge and returns the free bytes of its filesystem."""
+    """Makes /music on the badge; returns its filesystem's free bytes and block size."""
     code = ("import os\ntry:\n os.mkdir('/%s')\nexcept OSError:\n pass\n"
-            "s = os.statvfs('/')\nprint('@@FREE', s[1] * s[4])" % FOLDER)
+            "s = os.statvfs('/')\nprint('@@FREE', s[1] * s[4], s[1])" % FOLDER)
     r = mpremote(port, "exec", code, capture=True)
-    m = re.search(r"@@FREE (\d+)", r.stdout)
+    m = re.search(r"@@FREE (\d+) (\d+)", r.stdout)
     if r.returncode or not m:
         sys.exit("cannot read the badge's free space:\n" + (r.stderr or r.stdout).strip())
-    return int(m.group(1))
+    return int(m.group(1)), int(m.group(2))
 
 
 def to_badge(port, files):
-    free = badge_free(port)
-    print("badge: %s free in flash" % human(free))
-    chosen = fit(files, free)
-    args = []
-    for path, name, _size in chosen:
-        args += ["fs", "cp", path, ":/%s/%s" % (FOLDER, name), "+"]
-    r = mpremote(port, *args[:-1]) if args else None
-    mpremote(port, "reset", capture=True)  # restarts the OS; the port drops, so no exit code
-    if r is not None and r.returncode:
-        sys.exit("mpremote failed (exit %d)" % r.returncode)
-    return chosen
+    """Copies what fits; the badge is reset at the end whatever happens, since mpremote
+    stopped the OS."""
+    try:
+        free, block = badge_free(port)
+        print("badge: %s free in flash" % human(free))
+        # LittleFS stores a file in whole blocks, each losing ~8 bytes to skip-list pointers
+        chosen = fit(files, free, lambda size: -(-size // (block - 8)) * block)
+        args = []
+        for path, name, _size in chosen:
+            args += ["fs", "cp", path, ":/%s/%s" % (FOLDER, name), "+"]
+        r = mpremote(port, *args[:-1]) if args else None
+        if r is not None and r.returncode:
+            sys.exit("mpremote failed (exit %d)" % r.returncode)
+        return chosen
+    finally:
+        mpremote(port, "reset", capture=True)  # restarts the OS; the port drops, so no exit code
 
 
 def to_sd(folder, files):
-    if not os.path.isdir(folder):
-        sys.exit("%s is not a folder: is the SD card mounted?" % folder)
     dest = folder if os.path.basename(folder.rstrip("/")).lower() == FOLDER else \
         os.path.join(folder, FOLDER)
     os.makedirs(dest, exist_ok=True)
@@ -135,11 +140,16 @@ def main():
         sys.exit("ffmpeg not found: brew install ffmpeg")
     if not args.sd and not shutil.which("mpremote"):
         sys.exit("mpremote not found: pip install mpremote")
+    if args.sd and not os.path.isdir(args.sd):
+        sys.exit("%s is not a folder: is the SD card mounted?" % args.sd)
     port = None if args.sd else badge.find_port(args.port)
     with tempfile.TemporaryDirectory(prefix="traboda-music-") as tmp:
         files = []
         names = set()
         for src in args.files:
+            if not os.path.isfile(src):
+                print("  skipped %s: no such file" % src)
+                continue
             name = wav_name(src, bool(args.sd))
             if name in names:
                 print("  skipped %s: another file is also called %s" % (src, name))

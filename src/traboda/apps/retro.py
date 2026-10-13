@@ -11,34 +11,20 @@ MEDIA_KEYS = False
 # (partition label, name, what it runs)
 PARTS = (
     ("launcher", "Launcher", "Il menu: scegli il gioco e l'emulatore"),
-    ("retro-core", "Emulatori", "NES, Game Boy/Color, Master System/Game Gear, PC Engine, Lynx, SNES"),
+    ("retro-core", "Emulatori",
+     "NES, SNES, Game Boy/Color, Lynx, PC Engine, Master System, Game Gear, Coleco, Game&Watch"),
     ("prboom-go", "Doom", "PrBoom: Doom e i WAD in /roms/doom"),
 )
-ROMS = (("nes", "NES"), ("gb", "Game Boy"), ("gbc", "Game Boy Color"), ("sms", "Master System"),
-        ("gg", "Game Gear"), ("pce", "PC Engine"), ("lnx", "Lynx"), ("snes", "SNES"),
-        ("doom", "Doom (WAD)"))
+ROMS = (("nes", "NES"), ("snes", "SNES"), ("gb", "Game Boy"), ("gbc", "GB Color"),
+        ("sms", "Master Sys"), ("gg", "Game Gear"), ("col", "Coleco"), ("pce", "PC Engine"),
+        ("lnx", "Lynx"), ("gw", "Game&Watch"), ("doom", "Doom (WAD)"))
+# Retro-Go's own map on this badge: MENU is the rewind key, SELECT fast-forward, and
+# OPTION is MENU held with A.
 KEYS = ((B.GLYPHS[B.A], "A"), (B.GLYPHS[B.B], "B"), (B.GLYPHS[B.PLAY], "START"),
         (B.GLYPHS[B.NEXT], "SELECT"), (B.GLYPHS[B.PREV], "MENU"), (B.GLYPHS[B.PREV] + "+A", "Opzioni"))
 TABS = ("Emulatori", "ROM", "Tasti")
 TAB_Y = 50
 BODY_Y = 78
-
-
-class _Nav:
-    """The System as the widgets see it, noting HOME so that a dialog's caller leaves too."""
-
-    def __init__(self, sys):
-        self.sys = sys
-        self.home = False
-
-    def __getattr__(self, name):
-        return getattr(self.sys, name)
-
-    async def event(self, timeout_ms=None):
-        ev = await self.sys.event(timeout_ms)
-        if ev is not None and B.kind(ev) == self.sys.HOME:
-            self.home = True
-        return ev
 
 
 def _installed():
@@ -113,11 +99,11 @@ def _roms(sys):
     x += gfx.text("/roms/<sistema>/", x, BODY_Y, ui.CYAN)
     gfx.text(" sulla scheda SD", x, BODY_Y, ui.TEXT)
     for i, (folder, name) in enumerate(ROMS):
-        cx = 8 + (i % 3) * 103
-        cy = BODY_Y + 20 + (i // 3) * 34
-        gfx.round_rect(cx, cy, 98, 30, 6, ui.PANEL)
-        gfx.text(folder, cx + 7, cy + 1, ui.CYAN)
-        gfx.text(name, cx + 7, cy + 17, ui.DIM, "small")
+        cx = 8 + (i % 4) * 77
+        cy = BODY_Y + 20 + (i // 4) * 34
+        gfx.round_rect(cx, cy, 73, 30, 6, ui.PANEL)
+        gfx.text(folder, cx + 6, cy + 1, ui.CYAN)
+        gfx.text(name, cx + 6, cy + 17, ui.DIM, "small")
     y = BODY_Y + 20 + 3 * 34 + 4
     if _sd_present(sys):
         gfx.text("✓ Scheda SD inserita", 12, y, ui.GREEN, "small")
@@ -133,11 +119,12 @@ def _keys():
         gfx.round_rect(x, y, kw, 20, 5, ui.PANEL2)
         gfx.text(glyph, x + kw // 2, y + 2, ui.YELLOW, align=1)
         gfx.text("→ " + fn, x + kw + 8, y + 2, ui.TEXT)
-    y = BODY_Y + 88
-    gfx.round_rect(8, y, 304, 46, 8, ui.PANEL)
-    icons.draw(gfx.fb, "home", 18, y + 15, 1)
-    gfx.text("Per tornare a Traboda:", 44, y + 5, ui.DIM)
-    gfx.text("«Esci» o reset in Retro-Go", 44, y + 24, ui.TEXT)
+    y = BODY_Y + 86
+    gfx.round_rect(8, y, 304, 54, 8, ui.PANEL)
+    icons.draw(gfx.fb, "home", 18, y + 19, 1)
+    gfx.text("Per tornare a Traboda:", 44, y + 3, ui.DIM)
+    gfx.text("B nel menu di Retro-Go e conferma", 44, y + 19, ui.TEXT)
+    gfx.text("o spegni e riaccendi il badge", 44, y + 35, ui.TEXT)
 
 
 def _restore_leds(sys):
@@ -145,41 +132,41 @@ def _restore_leds(sys):
         sys.leds.set_effect(settings.get("led_effect") if settings.get("leds_on") else "off")
 
 
-async def _launch(nav, parts):
+async def _launch(sys, parts):
     """Confirms, then reboots into Retro-Go. Returns True when the app should leave."""
-    sys = nav.sys
     if "launcher" not in parts:
-        await ui.dialog(nav, TITLE, "Retro-Go non è installato su questo badge: la "
+        await ui.dialog(sys, TITLE, "Retro-Go non è installato su questo badge: la "
                                     "partizione «launcher» è vuota o manca.")
-        return nav.home
-    msg = "Il badge si riavvia in Retro-Go. Per tornare a Traboda: «Esci» o reset nel suo menu."
-    if await ui.dialog(nav, "Avvia Retro-Go", msg, ("Annulla", "Avvia")) != 1:
-        return nav.home
+        return sys.leaving()
+    msg = ("Il badge si riavvia in Retro-Go. Per tornare a Traboda: B nel suo menu e "
+           "conferma, o spegni e riaccendi.")
+    if await ui.dialog(sys, "Avvia Retro-Go", msg, ("Annulla", "Avvia")) != 1:
+        return sys.leaving()
     import esp32
     import machine
-    sys.audio.stop()
     try:
+        sys.audio.stop()
         settings.save()
         sys.audio.close()
+        if sys.leds:
+            sys.leds.off(now=True)
     except OSError:
         pass                                # the reboot goes ahead all the same
-    if sys.leds:
-        sys.leds.off(now=True)
     gfx.clear(ui.BG)
     icons.draw(gfx.fb, ICON, 144, 76, 2)
     gfx.text("Avvio di Retro-Go…", 160, 122, ui.TEXT, "title", align=1)
     sys.show()
     await sys.sleep_ms(400)
     try:
-        esp32.Partition.find(esp32.Partition.TYPE_APP, label="launcher")[0].set_boot()
+        esp32.Partition("launcher").set_boot()
         machine.reset()
     except SystemExit:                      # what machine.reset() does in the simulator
         pass
     except Exception as e:  # noqa: BLE001 - set_boot refuses an image that does not verify
         _restore_leds(sys)
-        await ui.dialog(nav, TITLE, "La partizione «launcher» non contiene un firmware "
+        await ui.dialog(sys, TITLE, "La partizione «launcher» non contiene un firmware "
                                     "avviabile (%s)." % e)
-        return nav.home
+        return sys.leaving()
     _restore_leds(sys)
     return True
 
@@ -214,7 +201,7 @@ async def main(sys):
             if sys.is_back(ev):
                 return
             if k == B.A and kind == B.CLICK:
-                if await _launch(_Nav(sys), parts):
+                if await _launch(sys, parts):
                     return
                 full = True
                 break

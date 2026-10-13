@@ -8,8 +8,9 @@
   tools/companion.py                  every 2 s until Ctrl-C (open Companion on the badge)
   tools/companion.py --open           also opens the Companion app on the badge
   tools/companion.py --notify TEXT    one notification on the badge, then exit
-  tools/companion.py --stdout         print the commands instead of sending them; with the
-                                      simulator: tools/companion.py --stdout --interval 0.2 |
+  tools/companion.py --dry-run        print the lines instead of sending them (no badge, no
+                                      pyserial); they also drive the simulator:
+                                      tools/companion.py --dry-run --interval 0.5 |
                                       micropython sim/run.py OUT "app:companion,wait:6000,snap:x"
   options: --port PORT, --interval SECONDS
 
@@ -162,20 +163,28 @@ def wait_for_badge(explicit):
         time.sleep(2)
 
 
+def feed(send, args, host):
+    """The clock, the app with --open, then the stats every interval, forever."""
+    send("time %d" % int(time.time()))
+    if args.open:
+        send("app companion")
+    while True:
+        t0 = time.monotonic()
+        send(payload(host))
+        time.sleep(max(0.1, args.interval - (time.monotonic() - t0)))
+
+
 def session(port_name, args, host):
     """Sends until the port fails (OSError) or Ctrl-C."""
     port = dev.open_serial(port_name)
     try:
         port.write_timeout = 2            # a badge that stops reading counts as gone
-        write(port, "time %d" % int(time.time()))
-        if args.open:
-            write(port, "app companion")
         print("sending to the badge on %s every %g s (Ctrl-C to stop)" % (port_name, args.interval))
-        while True:
-            t0 = time.monotonic()
-            write(port, payload(host))
+
+        def send(line):
+            write(port, line)
             port.reset_input_buffer()     # replies and REPL chatter
-            time.sleep(max(0.1, args.interval - (time.monotonic() - t0)))
+        feed(send, args, host)
     finally:
         try:
             dev.close_serial(port)
@@ -183,12 +192,16 @@ def session(port_name, args, host):
             port.close()
 
 
-def to_stdout(args, host):
+def dry_run(args):
+    """Prints what a session or --notify would send."""
+    def send(line):
+        print("@@TRB " + line, flush=True)
     try:
-        while True:
-            print("@@TRB " + payload(host), flush=True)
-            time.sleep(args.interval)
-    except BrokenPipeError:               # the simulator quit
+        if args.notify is not None:
+            send("toast " + _clean(args.notify, 120))
+        else:
+            feed(send, args, host_name())
+    except BrokenPipeError:               # the reader (the simulator, head) is gone
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
 
 
@@ -198,19 +211,22 @@ def main():
     ap.add_argument("--interval", type=float, default=2.0, metavar="SECONDS")
     ap.add_argument("--open", action="store_true", help="open the Companion app on the badge")
     ap.add_argument("--notify", metavar="TEXT", help="send one notification and exit")
-    ap.add_argument("--stdout", action="store_true", help="print the commands, do not send")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="print the lines instead of sending them (no badge needed)")
     args = ap.parse_args()
     if args.interval <= 0:
         ap.error("--interval must be more than 0")
+    if args.notify is not None and not _clean(args.notify):
+        ap.error("--notify needs some text")
     try:
-        if args.stdout:
-            to_stdout(args, host_name())
+        if args.dry_run:
+            dry_run(args)
             return
         try:
             import serial  # noqa: F401
         except ImportError:
             sys.exit("pyserial is missing: pip install pyserial, or uv run tools/companion.py")
-        if args.notify:
+        if args.notify is not None:
             port = dev.open_serial(badge.find_port(args.port))
             try:
                 write(port, "toast " + _clean(args.notify, 120))
