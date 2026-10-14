@@ -3,6 +3,7 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -16,6 +17,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Tag matches the OS version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(sed -n 's/^VERSION = "\(.*\)"$/\1/p' src/traboda/__init__.py)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but src/traboda/__init__.py has VERSION = \"$version\""
+            exit 1
+          fi
       - name: Build
         shell: bash
         run: |
@@ -40,3 +50,27 @@ jobs:
           make -C firmware/.build/micropython/ports/unix -j"$(nproc)"
       - name: Smoke tests
         run: python3 tests/smoke.py --micropython firmware/.build/micropython/ports/unix/build-standard/micropython
+
+  # A pushed tag vX.Y.Z publishes the firmware the jobs above built and tested as a GitHub
+  # Release, which tools/flash.py --download fetches.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [firmware, simulator]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release create
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: traboda-firmware
+          path: dist
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          sha256sum bootloader.bin partition-table.bin traboda.bin > SHA256SUMS
+          gh release create "$TAG" bootloader.bin partition-table.bin traboda.bin SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --title "Traboda OS $TAG" \
+            --notes "Install or update: see the README. First install: python3 tools/flash.py --download --erase-fs"
