@@ -73,4 +73,4 @@ jobs:
           sha256sum bootloader.bin partition-table.bin traboda.bin > SHA256SUMS
           gh release create "$TAG" bootloader.bin partition-table.bin traboda.bin SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --title "Traboda OS $TAG" \
-            --notes "Install or update: see the README. First install: python3 tools/flash.py --download --erase-fs"
+            --notes "Install or update: python3 tools/flash.py --download (see the README, Install)."
