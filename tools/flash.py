@@ -124,7 +124,7 @@ def download(tag, folder):
     for name in ("SHA256SUMS",) + IMAGES:
         with open(os.path.join(folder, name), "wb") as f:
             f.write(blobs[name])
-    print("Traboda %s downloaded into %s" % (release["tag_name"], folder))
+    print("Traboda %s downloaded into %s" % (release["tag_name"], folder), flush=True)
 
 
 def main():
@@ -185,7 +185,7 @@ def main():
             first = a.read() != b.read()
     if first:
         print("first install on this badge (its partition table is not Traboda's): "
-              "erasing the old storage, 0x742000 to the end")
+              "erasing the old storage, 0x742000 to the end", flush=True)
     if first or args.erase_fs:
         erase += ["data", "vfs"]
     for label in erase:
@@ -212,7 +212,7 @@ def main():
     subprocess.run(esptool + ["--before", "no-reset", "--after", "watchdog-reset", "chip-id"],
                    capture_output=True)
     print("done: Traboda flashed on %s (Retro-Go untouched). If the screen stays dark, "
-          "slide the switch off and on." % port)
+          "slide the switch off and on." % port, flush=True)
 
 
 if __name__ == "__main__":
