@@ -1,7 +1,7 @@
 """The badge's nine keys, as press / release / repeat / long-press events.
 
 Eight keys sit on the AW9523B (read over I2C only when its INTN line says something
-changed, plus a slow safety poll); the rewind key is GPIO0. The board debounces every key
+changed, plus a slow safety poll); the fast-forward key is GPIO0. The board debounces every key
 with an RC filter, so edges are taken as they come.
 
 Events are small ints, kind << 4 | key, so the queue never allocates.
@@ -30,7 +30,7 @@ _REPEATS = 1 << UP | 1 << DOWN | 1 << LEFT | 1 << RIGHT
 # expander bit -> key
 _MAP = (
     (board.EX_UP, UP), (board.EX_DOWN, DOWN), (board.EX_LEFT, LEFT), (board.EX_RIGHT, RIGHT),
-    (board.EX_A, A), (board.EX_B, B), (board.EX_PLAY, PLAY), (board.EX_NEXT, NEXT),
+    (board.EX_A, A), (board.EX_B, B), (board.EX_PLAY, PLAY), (board.EX_PREV, PREV),
 )
 
 
@@ -45,7 +45,7 @@ def key(ev):
 class Buttons:
     def __init__(self, expander):
         self.ex = expander
-        self.prev_pin = Pin(board.BUTTON_PREV, Pin.IN, Pin.PULL_UP)
+        self.next_pin = Pin(board.BUTTON_NEXT, Pin.IN, Pin.PULL_UP)
         self.int_pin = Pin(board.EXPANDER_INT, Pin.IN, Pin.PULL_UP)
         self.state = 0              # bitmask of keys held now
         self._ex_keys = 0
@@ -73,8 +73,8 @@ class Buttons:
         if not self.int_pin.value() or time.ticks_diff(now, self._last_read) > 250:
             self.read_expander()
         keys = self._ex_keys
-        if not self.prev_pin.value():
-            keys |= 1 << PREV
+        if not self.next_pin.value():
+            keys |= 1 << NEXT
         changed = keys ^ self.state
         q = self.queue
         if changed:

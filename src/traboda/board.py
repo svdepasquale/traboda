@@ -28,7 +28,7 @@ LED_DATA = 3            # through a 74AHCT1G126 buffer powered by the LED rail
 LED_COUNT = 22
 BATTERY_ADC = 6         # ADC1 channel 5, 1.5 M / 470 k divider
 EXPANDER_INT = 8        # AW9523B INTN, open drain, low on any input change
-BUTTON_PREV = 0         # GPIO0: the rewind key, also the BOOT strap
+BUTTON_NEXT = 0         # GPIO0: the fast-forward key (SW8, right), also the BOOT strap
 
 # AW9523B pins, flat numbering: P0.x = x, P1.x = 8 + x
 EX_A = 0
@@ -38,7 +38,7 @@ EX_DOWN = 3
 EX_LEFT = 5
 EX_UP = 6
 EX_AMP_SHUTDOWN = 7     # FM8002A shutdown: high = off, low = speaker on
-EX_NEXT = 8             # P1.0, the fast-forward key
+EX_PREV = 8             # P1.0, the rewind key (SW6, left)
 EX_B = 9                # P1.1
 EX_BOOST = 10           # P1.2, 5 V boost for the speaker amp and the LEDs
 EX_SD_DETECT = 11       # P1.3, low while a card is inserted

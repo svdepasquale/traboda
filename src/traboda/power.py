@@ -118,7 +118,7 @@ def standby(display=None, leds=None, audio=None):
     # INTN so only a new press wakes us.
     _ex.setup()
     t0 = time.ticks_ms()
-    while (_ex.inputs() & 0x036F != 0x036F or not Pin(board.BUTTON_PREV).value()) \
+    while (_ex.inputs() & 0x036F != 0x036F or not Pin(board.BUTTON_NEXT).value()) \
             and time.ticks_diff(time.ticks_ms(), t0) < 2000:
         time.sleep_ms(20)
     _ex.inputs()

@@ -11,9 +11,9 @@ from . import board
 
 _INPUTS = (1 << board.EX_A | 1 << board.EX_PLAY | 1 << board.EX_RIGHT | 1 << board.EX_DOWN
            | 1 << board.EX_LEFT | 1 << board.EX_UP | 1 << 4
-           | 1 << board.EX_NEXT | 1 << board.EX_B | 1 << board.EX_SD_DETECT | 1 << 13)
+           | 1 << board.EX_PREV | 1 << board.EX_B | 1 << board.EX_SD_DETECT | 1 << 13)
 _BUTTONS = (1 << board.EX_A | 1 << board.EX_PLAY | 1 << board.EX_RIGHT | 1 << board.EX_DOWN
-            | 1 << board.EX_LEFT | 1 << board.EX_UP | 1 << board.EX_NEXT | 1 << board.EX_B)
+            | 1 << board.EX_LEFT | 1 << board.EX_UP | 1 << board.EX_PREV | 1 << board.EX_B)
 
 
 class AW9523:

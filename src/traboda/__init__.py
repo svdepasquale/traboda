@@ -34,6 +34,7 @@ def main():
     from .core import System
 
     system = System()
+    system.buttons.scan()           # held() reads the state a scan leaves; none has run yet
     if system.buttons.held(buttons.B):
         from . import gfx, ui
         gfx.clear(ui.BG)
