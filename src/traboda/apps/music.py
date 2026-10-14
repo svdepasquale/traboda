@@ -109,7 +109,7 @@ BAR_W = 196
 FRAME_MS = 100
 SPIN = 117                    # reel speed: 1/256 steps of 5 degrees per ms, times radius
 TURN = 72 * 256
-HINTS = [("A", "▶‖"), ("◄►", "Brano"), ("▲▼", "Volume"), ("A tieni", "Lista")]
+HINTS = [("A", "▶‖"), ("◄►", "Brano"), ("▲▼", "Volume"), ("B", "Lista")]
 
 _SIN = array("h", [int(1024 * math.sin(i * math.pi / 36)) for i in range(72)])
 # tape pack radius for 0..100 % of the tape wound on it (the tape area is constant)
@@ -305,10 +305,10 @@ def _toggle(sys, it):
 
 def _hints(it):
     if it.tag == "now":
-        return [("A", "Apri"), ("A tieni", "Esci")]
+        return [("A", "Apri"), ("B", "Esci")]
     if it.kind == "toggle":
-        return [("A", "Cambia"), ("A tieni", "Esci")]
-    return [("A", "Play"), ("◄►", "Pagina"), ("A tieni", "Esci")]
+        return [("A", "Cambia"), ("B", "Esci")]
+    return [("A", "Play"), ("◄►", "Pagina"), ("B", "Esci")]
 
 
 def _loading(sys):
@@ -334,7 +334,7 @@ async def _empty(sys):
             for i, line in enumerate(lines):
                 gfx.text(line, 26, y + 60 + 16 * i, SOFT)
             gfx.text("Da MP3: ffmpeg -i a.mp3 a.wav", 26, y + 68 + 16 * len(lines), ui.CYAN)
-            ui.footer([("A", "Riproduzione" if loaded else "Aggiorna"), ("A tieni", "Esci")])
+            ui.footer([("A", "Riproduzione" if loaded else "Aggiorna"), ("B", "Esci")])
             sys.show()
             draw = False
         ev = await sys.event()

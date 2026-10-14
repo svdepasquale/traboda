@@ -182,7 +182,7 @@ class Synth:
         if self.menu >= 0:
             hints = [("▲▼", "Scegli"), ("◄►", "Cambia"), ("A", "Ok")]
         elif self.mode == 0:
-            hints = [("A tieni", "Esci"), ("►► tieni", "Menu")]
+            hints = [("B", "Esci"), ("►► tieni", "Menu")]
         else:
             hints = [("◄►", "Passo"), ("▲▼", "Nota"), ("A", "On/Off"),
                      ("►►", "Stop" if self.playing else "Avvia")]

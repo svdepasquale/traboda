@@ -27,7 +27,7 @@ async def main(sys):
             best = settings.score(mod)
             items.append(ui.Item(title, "%d" % best if best else None, icon, tag=mod, detail=pitch))
         it = await ui.menu(sys, TITLE, items, icon=ICON, sel=sel,
-                           hints=[("A", "Gioca"), ("A tieni", "Indietro")], accent=ui.YELLOW)
+                           hints=[("A", "Gioca"), ("B", "Indietro")], accent=ui.YELLOW)
         if it is None:
             return
         sel = [g[0] for g in GAMES].index(it.tag)

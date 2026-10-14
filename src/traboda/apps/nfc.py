@@ -257,7 +257,7 @@ async def _read_ntag(sys, reader):
 async def _read_classic(sys, reader, uid):
     ui.header(sys, "MIFARE", "nfc")
     gfx.text("Lettura settori", 160, 92, ui.CYAN, "title", align=1)
-    ui.footer([("A tieni", "Indietro")])
+    ui.footer([("B", "Indietro")])
     sys.show()
     reader.halt()                      # the card is ACTIVE from _poll: halt so WUPA can re-select
     opened = []
@@ -316,7 +316,7 @@ async def read_card(sys, reader, uid, sak, atqa):
 def _draw_loading(sys, msg):
     ui.header(sys, "NFC", "nfc")
     gfx.text(msg, 160, 110, ui.CYAN, "title", align=1)
-    ui.footer([("A tieni", "Indietro")])
+    ui.footer([("B", "Indietro")])
     sys.show()
 
 
@@ -396,7 +396,7 @@ def _draw_idle_static(sys, reader):
     if reader is None:
         sub = "lettore non disponibile"
     gfx.text(sub, 160, 192, ui.DIM, align=1)
-    ui.footer([("A", "Archivio"), ("A tieni", "Indietro")])
+    ui.footer([("A", "Archivio"), ("B", "Indietro")])
 
 
 def _draw_ring(sys, frame):
@@ -485,7 +485,7 @@ async def result_screen(sys, reader, info):
     while True:
         ui.header(sys, info["title"], "nfc")
         draw_body(sys, info)
-        ui.footer([("A", "Azioni"), ("A tieni", "Indietro")])
+        ui.footer([("A", "Azioni"), ("B", "Indietro")])
         sys.show()
         ev = await sys.event()
         if ev is None:
@@ -507,7 +507,7 @@ async def _actions(sys, reader, info, writable):
         items.append(ui.Item("Scrivi testo", None, "nfc", tag="text"))
     items.append(ui.Item("Apri archivio", None, "files", tag="arch"))
     it = await ui.menu(sys, "Azioni", items, icon="settings",
-                       hints=[("A", "Scegli"), ("A tieni", "Indietro")], accent=ui.CYAN)
+                       hints=[("A", "Scegli"), ("B", "Indietro")], accent=ui.CYAN)
     if it is None:
         return
     if it.tag == "save":
@@ -627,7 +627,7 @@ async def archive(sys):
             return
         items = [ui.Item(_spaced(n[:-5]), None, "nfc", tag=n) for n in names]
         it = await ui.menu(sys, "Archivio NFC", items, icon="nfc",
-                           hints=[("A", "Apri"), ("A tieni", "Indietro")])
+                           hints=[("A", "Apri"), ("B", "Indietro")])
         if it is None:
             return None
         try:
@@ -652,7 +652,7 @@ async def _view_saved(sys, info):
     while True:
         ui.header(sys, info.get("title", "Tessera"), "nfc")
         draw_body(sys, info)
-        ui.footer([("A", "Elimina"), ("A tieni", "Indietro")])
+        ui.footer([("A", "Elimina"), ("B", "Indietro")])
         sys.show()
         ev = await sys.event()
         if ev is None:

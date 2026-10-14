@@ -23,3 +23,7 @@
 
 // The ES8156 wants a master clock on GPIO10 (patches/0001-esp32-i2s-mck.patch).
 #define MICROPY_PY_MACHINE_I2S_MCK          (1)
+
+// The expander's INTN wakes the badge from deep sleep (ext0, active low) and has no
+// external pull-up (patches/0002-esp32-ext0-wake-pull.patch).
+#define MICROPY_HW_SLEEP_WAKE_PULL          (1)

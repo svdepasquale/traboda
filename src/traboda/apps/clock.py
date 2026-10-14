@@ -49,19 +49,19 @@ CHIME_WORK = ((2093, 100), (1568, 100), (1319, 160))
 
 NOTE = "i timer contano solo con l'app aperta"
 
-H_CLOCK = (("◄►", "Schede"), ("A tieni", "Esci"))
-H_TIMER_IDLE = (("▲▼", "Imposta"), ("A", "Avvia"), ("A tieni", "Esci"))
-H_TIMER_RUN = (("A", "Pausa"), ("►►", "Azzera"), ("A tieni", "Esci"))
-H_TIMER_RUN_MUSIC = (("A", "Pausa"), ("A tieni", "Esci"))
-H_TIMER_PAUSE = (("A", "Riprendi"), ("▲▼", "Azzera"), ("A tieni", "Esci"))
+H_CLOCK = (("◄►", "Schede"), ("B", "Esci"))
+H_TIMER_IDLE = (("▲▼", "Imposta"), ("A", "Avvia"), ("B", "Esci"))
+H_TIMER_RUN = (("A", "Pausa"), ("►►", "Azzera"), ("B", "Esci"))
+H_TIMER_RUN_MUSIC = (("A", "Pausa"), ("B", "Esci"))
+H_TIMER_PAUSE = (("A", "Riprendi"), ("▲▼", "Azzera"), ("B", "Esci"))
 H_TIMER_RING = (("un tasto", "Ferma l'allarme"),)
-H_WATCH_IDLE = (("A", "Avvia"), ("A tieni", "Esci"))
-H_WATCH_RUN = (("A", "Ferma"), ("▼", "Giro"), ("▲", "Azzera"), ("A tieni", "Esci"))
-H_WATCH_STOP = (("A", "Riprendi"), ("▲", "Azzera"), ("A tieni", "Esci"))
-H_POMO_IDLE = (("A", "Avvia"), ("A tieni", "Esci"))
-H_POMO_RUN = (("A", "Ferma"), ("▼", "Salta"), ("▲", "Azzera"), ("A tieni", "Esci"))
-H_POMO_PAUSE = (("A", "Riprendi"), ("▲", "Azzera"), ("A tieni", "Esci"))
-H_EXIT = (("A tieni", "di nuovo per uscire"),)
+H_WATCH_IDLE = (("A", "Avvia"), ("B", "Esci"))
+H_WATCH_RUN = (("A", "Ferma"), ("▼", "Giro"), ("▲", "Azzera"), ("B", "Esci"))
+H_WATCH_STOP = (("A", "Riprendi"), ("▲", "Azzera"), ("B", "Esci"))
+H_POMO_IDLE = (("A", "Avvia"), ("B", "Esci"))
+H_POMO_RUN = (("A", "Ferma"), ("▼", "Salta"), ("▲", "Azzera"), ("B", "Esci"))
+H_POMO_PAUSE = (("A", "Riprendi"), ("▲", "Azzera"), ("B", "Esci"))
+H_EXIT = (("B", "di nuovo per uscire"),)
 
 icons.register("tomato", (
     "................",

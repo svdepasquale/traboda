@@ -198,7 +198,7 @@ async def menu(sys, title, items, icon=None, sel=0, hints=None, on_change=None, 
     rows = 6
     top = 0
     sel = max(0, min(sel, len(items) - 1))
-    hints = hints or [("A", "Ok"), ("A tieni", "Indietro")]
+    hints = hints or [("A", "Ok"), ("B", "Indietro")]
     redraw_all = True
     while True:
         if sel < top:
@@ -323,7 +323,7 @@ async def keyboard(sys, title, text="", secret=False, max_len=64):
                     gfx.round_rect(x, ky + 4 * 26, bw, 23, 5, ACCENT if on else PANEL)
                     gfx.text(label, x + bw // 2, ky + 4 * 26 + 4, WHITE if on else DIM, align=1)
                     x += bw + 4
-        footer([("A", "Scrivi"), ("A tieni", "Canc"), ("►", "OK")])
+        footer([("A", "Scrivi"), ("B", "Canc"), ("►", "OK")])
         sys.show()
         ev = await sys.event()
         if ev is None:

@@ -5,6 +5,8 @@ Register map: 0x00/0x01 input, 0x02/0x03 output, 0x04/0x05 direction (1 = input)
 0x12/0x13 LED-mode switch (1 = GPIO), 0x7F soft reset.
 """
 
+import time
+
 from . import board
 
 _INPUTS = (1 << board.EX_A | 1 << board.EX_PLAY | 1 << board.EX_RIGHT | 1 << board.EX_DOWN
@@ -19,18 +21,28 @@ class AW9523:
         self.i2c = i2c
         self.addr = addr
         self._b1 = bytearray(1)
-        self._b2 = bytearray(2)
+        self._b2 = bytearray(2)       # _write16 only
         if self._read8(0x10) != 0x23:
             raise OSError("AW9523B not found")
-        # Outputs first, directions second, so no switch glitches on when a pin turns output:
-        # amplifier shut down, boost, RFID and LEDs off, LCD out of reset.
+        # The expander keeps its state across ESP32 resets, and it was once found with every
+        # P1 input reading low (phantom B/prev presses, a phantom SD card) although its
+        # registers read back right: start each boot from a soft reset.
+        self._write8(0x7F, 0x00)
+        time.sleep_ms(5)
         self.out = 1 << board.EX_AMP_SHUTDOWN | 1 << board.EX_LCD_RESET
+        self.setup()
+
+    def setup(self):
+        """(Re)writes every register: outputs first, directions second, so no switch
+        glitches on when a pin turns output (amp shut down, boost, RFID and LEDs off,
+        LCD out of reset unless the caller changed it)."""
         self._write8(0x11, 0x10)  # P0 push-pull, or P0.7 could never drive the amp off
         self._write8(0x12, 0xFF)
         self._write8(0x13, 0xFF)
         self._write16(0x02, self.out)
         self._write16(0x04, _INPUTS)
         self._write16(0x06, 0xFFFF & ~_BUTTONS)  # INTN fires on button changes only
+        self.inputs()                            # clears a stale INTN
 
     def _read8(self, reg):
         self.i2c.readfrom_mem_into(self.addr, reg, self._b1)
@@ -46,9 +58,10 @@ class AW9523:
         self.i2c.writeto_mem(self.addr, reg, self._b2)
 
     def inputs(self):
-        """Both input ports as one 16-bit word (reading also clears INTN)."""
-        self.i2c.readfrom_mem_into(self.addr, 0x00, self._b2)
-        return self._b2[0] | self._b2[1] << 8
+        """Both input ports as one 16-bit word (reading also clears INTN). Two single-byte
+        reads: on the badge a 2-byte burst from 0x00 sometimes returned 0x40 for port 1
+        (phantom B/prev presses and a phantom SD card) while single reads were right."""
+        return self._read8(0x00) | self._read8(0x01) << 8
 
     def pin(self, n):
         return self.inputs() >> n & 1

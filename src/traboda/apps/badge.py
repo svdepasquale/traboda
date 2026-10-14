@@ -14,7 +14,7 @@ MEDIA_KEYS = False
 STYLES = ("RomHack", "Neon", "Ciao!")
 STYLE_LEDS = (("wave", (255, 45, 111)), ("comet", (45, 226, 230)), ("breathe", (255, 45, 111)))
 MARQUEE = "Fermami e parliamo di hacking  •  RomHack Camp 2026"
-HINTS = [("A", "Modifica"), ("◄►", "Stile"), ("A tieni", "Esci")]
+HINTS = [("A", "Modifica"), ("◄►", "Stile"), ("B", "Esci")]
 HINT_MS = 4000
 SCROLL = 0.035          # marquee speed, px per ms
 HOME = "home"
@@ -300,7 +300,7 @@ async def _edit(sys):
             items = _items()
             if full:
                 y0 = ui.header(sys, "Modifica badge", ICON)
-                ui.footer([("A", "Modifica"), ("◄►", "Cambia"), ("A tieni", "Fine")])
+                ui.footer([("A", "Modifica"), ("◄►", "Cambia"), ("B", "Fine")])
             if full or changed:
                 ui.draw_list(items, sel, 0, y0, len(items))
                 if full:

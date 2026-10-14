@@ -327,8 +327,8 @@ async def _listing(sys, vols, folder, focus, at, up):
     if bad:
         counts.append("%d %s" % (bad, "illeggibile" if bad == 1 else "illeggibili"))
     summary = " · ".join(counts)
-    hints = [("A", "Apri"), ("◄", "Su"), ("A tieni", "Indietro")] if up else \
-        [("A", "Apri"), ("A tieni", "Esci")]
+    hints = [("A", "Apri"), ("◄", "Su"), ("B", "Indietro")] if up else \
+        [("A", "Apri"), ("B", "Esci")]
     top = 0
     full = True
     while True:
@@ -507,7 +507,7 @@ async def _scroll(sys, name, total, draw):
     full = dirty = True
     while True:
         if full:
-            _frame(sys, [("▲▼", "Scorri"), ("◄►", "Pagina"), ("A tieni", "Indietro")])
+            _frame(sys, [("▲▼", "Scorri"), ("◄►", "Pagina"), ("B", "Indietro")])
         if dirty:
             gfx.fill_rect(0, TOP_Y, 312, PAGE * LINE_H, ui.BG)
             _title(name, draw(top))
@@ -637,7 +637,7 @@ async def _info(sys, vols, path, name, size):
                     gfx.text(line, 104, y, ui.TEXT)
                     y += 16
                 y += 3
-            ui.footer([("A tieni", "Indietro")])
+            ui.footer([("B", "Indietro")])
             sys.show()
             full = False
         ev = await sys.event()
@@ -667,7 +667,7 @@ async def main(sys):
         if folder is None:
             items = [ui.Item(label, _free(root), icon, tag=root) for label, root, icon in vols]
             it = await ui.menu(sys, TITLE, items, icon=ICON, sel=vsel,
-                               hints=[("A", "Apri"), ("A tieni", "Esci")])
+                               hints=[("A", "Apri"), ("B", "Esci")])
             if it is None:
                 return
             vsel = items.index(it)

@@ -102,7 +102,7 @@ def _frame(sys):
     gfx.text("Batteria", 174, 137, ui.DIM)
     gfx.round_rect(8, 180, 304, 38, 8, ui.PANEL)
     icons.draw(gfx.fb, "music", 16, 191, 1)
-    ui.footer([("A tieni", "Indietro")])
+    ui.footer([("B", "Indietro")])
 
 
 def _draw_head(host, clock):
@@ -202,7 +202,7 @@ def _wait_frame(sys):
     gfx.text("dalla cartella traboda avvia:", 160, 154, ui.DIM, align=1)
     gfx.round_rect(36, 176, 248, 22, 6, ui.PANEL2)
     gfx.text("python3 tools/companion.py", 160, 179, ui.CYAN, align=1)
-    ui.footer([("A tieni", "Indietro")])
+    ui.footer([("B", "Indietro")])
 
 
 def _draw_age(age_s):

@@ -114,11 +114,17 @@ def standby(display=None, leds=None, audio=None):
     if display:
         display.sleep()
     Pin(board.LCD_BACKLIGHT, Pin.OUT, value=0, hold=True)
-    # Wait for every key to be released, then clear INTN so only a new press wakes us.
-    while _ex.inputs() & 0x036F != 0x036F or not Pin(board.BUTTON_PREV).value():
+    # Re-arm the expander, wait (at most 2 s) for the keys to be released, then clear
+    # INTN so only a new press wakes us.
+    _ex.setup()
+    t0 = time.ticks_ms()
+    while (_ex.inputs() & 0x036F != 0x036F or not Pin(board.BUTTON_PREV).value()) \
+            and time.ticks_diff(time.ticks_ms(), t0) < 2000:
         time.sleep_ms(20)
     _ex.inputs()
-    Pin(board.EXPANDER_INT, Pin.IN, Pin.PULL_UP, hold=True)
+    # Only the expander's INTN wakes us. No hold on it (a held pad cannot switch to the RTC
+    # mux the ext0 wake reads), and no GPIO0: it is the BOOT strap, so waking with the next
+    # key still down would land in the ROM bootloader.
+    Pin(board.EXPANDER_INT, Pin.IN, Pin.PULL_UP)
     esp32.wake_on_ext0(Pin(board.EXPANDER_INT), esp32.WAKEUP_ALL_LOW)
-    esp32.wake_on_ext1((Pin(board.BUTTON_PREV),), esp32.WAKEUP_ALL_LOW)
     machine.deepsleep()

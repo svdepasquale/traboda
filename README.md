@@ -67,8 +67,7 @@ Quick panel (hold play) anywhere: volume, brightness, LEDs, speaker, standby.
 
 ### Keys
 
-* **A** opens/selects; **holding A goes back** (B also goes back where it works: on some
-  badges B and rewind never register, and everything works without them).
+* **A** opens/selects, **B** goes back (holding A also goes back).
 * **play** plays/pauses music from any app, **next**/**rewind** skip tracks; **holding
   play** opens the quick panel. Games use play as pause.
 * Hold **B** while switching on to skip the OS and stay at the MicroPython REPL.

@@ -58,6 +58,9 @@ class Display:
         self.buf = bytearray(W * H * 2)
         self.mv = memoryview(self.buf)
         self.fb = framebuf.FrameBuffer(self.buf, W, H, framebuf.RGB565)
+        # standby holds the backlight pin low through deep sleep, and the hold outlives the
+        # wake-up: release it, or PWM cannot drive the pin and the screen stays dark
+        Pin(board.LCD_BACKLIGHT, Pin.OUT, value=0, hold=False)
         self._backlight = PWM(Pin(board.LCD_BACKLIGHT), freq=25_000, duty_u16=0)
         self.brightness = 0
         self._cmdbuf = bytearray(1)

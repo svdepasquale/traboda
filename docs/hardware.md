@@ -28,10 +28,11 @@ is an ESP32-S3 handheld shaped after a Sony Walkman WM-22. Schematic, BOM and ph
 | prev (left, under the screen) | expander P1.0 | SW6 |
 | next (right, under the screen) | **GPIO0**, the BOOT strap (also SW1 on the back) | SW8 |
 
-Every key has a 100 k pull-up and a 100 nF capacitor (hardware debounce). On the badge
-this port was developed on, **SW4 (B) and SW6 (prev) never register**: the expander pins
-are fine (driven low they recover through the pull-up in ~5 ms, like the working keys),
-the switches simply never close. Traboda OS is usable without them: A held = back.
+Every key has a 100 k pull-up and a 100 nF capacitor (hardware debounce). **Read the
+expander's input ports one register at a time**: on this badge a 2-byte burst read from
+0x00 intermittently returned a stale port 1 (0x40), which looked like B and prev never
+working, phantom B/prev presses and a phantom SD card, while single-byte reads of 0x00 and
+0x01 were always right. All nine keys work.
 
 ## LEDs
 
@@ -59,4 +60,10 @@ the boost can give: Traboda caps them at 60 % and defaults to 25 %.
   `prboom-go`) survives a Traboda flash. Retro-Go formats a FAT partition labelled `data`
   when there is no SD card, so Traboda's filesystem is labelled `vfs`.
 * The AW9523B powers up with every pin an output driving low; a software reset (0x7F)
-  returns it to that state, not to "all inputs".
+  returns it to that state, not to "all inputs". Traboda soft-resets it at every boot (it
+  keeps its state across ESP32 resets) and reads its inputs with single-byte reads.
+* **Deep sleep**: the expander's INTN (GPIO8, open drain, no external pull-up) is the wake
+  source (ext0, low). `firmware/patches/0002-esp32-ext0-wake-pull.patch` gives the pad an
+  RTC pull-up once it moves to the RTC mux; the pad must not be held. Do not wake on GPIO0:
+  it is the BOOT strap, so waking with "next" still down lands in the ROM bootloader. A
+  backlight pin held low through deep sleep stays held after the wake until released.

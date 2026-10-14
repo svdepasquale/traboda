@@ -65,7 +65,7 @@ def _frame(sys, parts):
         gfx.text("incompleto", 310, 22, ui.ORANGE, align=-1)
     else:
         gfx.text("✓ installato", 310, 22, ui.GREEN, align=-1)
-    ui.footer([("◄►", "Sezione"), ("A", "Avvia"), ("A tieni", "Indietro")])
+    ui.footer([("◄►", "Sezione"), ("A", "Avvia"), ("B", "Indietro")])
 
 
 def _tabs(tab):

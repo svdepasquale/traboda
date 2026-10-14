@@ -245,7 +245,7 @@ async def main(sys):
                 top = sel - LIST_ROWS + 1
             if full:
                 ui.header(nav, TITLE, ICON)
-                ui.footer([("A", "Ok"), ("A tieni", "Indietro")])
+                ui.footer([("A", "Ok"), ("B", "Indietro")])
             state = _card_state(nav)
             _draw_card()
             ui.draw_list(items, sel, top, LIST_Y, LIST_ROWS)
@@ -356,10 +356,10 @@ def _scan_header(nav, tab):
 
 def _scan_footer(tab):
     if tab == 1:
-        ui.footer([("A", "Aggiorna"), ("◄►", "Reti"), ("A tieni", "Indietro")])
+        ui.footer([("A", "Aggiorna"), ("◄►", "Reti"), ("B", "Indietro")])
     else:
         ui.footer([("A", "Connetti" if _scan else "Cerca"), ("◄►", "Canali"),
-                   ("A tieni", "Indietro")])
+                   ("B", "Indietro")])
 
 
 def _do_scan(nav, tab):
@@ -548,7 +548,7 @@ def _radio_screen(nav, label, name):
     ui.header(nav, TITLE, ICON)
     gfx.text(label, W // 2, 136, ui.DIM, align=1)
     gfx.text(gfx.ellipsize(name, 296, "title"), W // 2, 154, ui.TEXT, "title", align=1)
-    ui.footer([("A tieni", "Annulla")])
+    ui.footer([("B", "Annulla")])
 
 
 async def _attempt(coro):
@@ -666,7 +666,7 @@ async def _saved_screen(nav):
         items = [ui.Item(n[0], "connessa" if n[0] == cur else None if n[1] else "aperta",
                          "wifi", tag=n[0]) for n in nets]
         it = await ui.menu(nav, "Reti salvate", items, icon="wf_saved", sel=sel,
-                           hints=[("A", "Opzioni"), ("A tieni", "Indietro")])
+                           hints=[("A", "Opzioni"), ("B", "Indietro")])
         if it is None:
             return None
         sel = items.index(it)

@@ -85,7 +85,10 @@ class HostLink:
             info = {"version": VERSION, "app": s.app_name, "errors": s.errors[-10:],
                     "battery": s.battery, "charging": s.charging, "heap": gc.mem_free(),
                     "uptime_s": time.ticks_diff(time.ticks_ms(), s._started) // 1000,
-                    "wifi": net.status, "ip": net.ip(), "sd": s.sd_mounted}
+                    "wifi": net.status, "ip": net.ip(), "sd": s.sd_mounted,
+                    "expander": "in %04x dir %02x%02x out %02x%02x" % (
+                        s.ex.inputs(), s.ex._read8(5), s.ex._read8(4), s.ex._read8(3),
+                        s.ex._read8(2))}
             print("@@INFO " + json.dumps(info))
         elif name == "wifi":
             try:

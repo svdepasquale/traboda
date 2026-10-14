@@ -341,23 +341,23 @@ def _draw(sys, place, cache, err):
     if cache:
         _draw_data(cache)
         ui.footer([("A", "Aggiorna" if net.connected() else "Wi-Fi"), ("▼", "Città"),
-                   ("A tieni", "Indietro")])
+                   ("B", "Indietro")])
     elif net.connected() and not err:
         _draw_message("partly", "Scarico le previsioni…", [place["name"]], ui.TEXT)
         ui.footer([])
     elif net.connected():
         _draw_message("cloudy", "Meteo non disponibile", gfx.wrap(err, 296), ui.ORANGE)
-        ui.footer([("A", "Riprova"), ("▼", "Città"), ("A tieni", "Indietro")])
+        ui.footer([("A", "Riprova"), ("▼", "Città"), ("B", "Indietro")])
     elif net.status in ("scanning", "connecting"):
         _draw_message("wifi", "Connessione Wi-Fi…",
                       [gfx.ellipsize((net.ssid or "") if net.status == "connecting" else
                                      "ricerca delle reti salvate", 296)], ui.TEXT)
-        ui.footer([("A", "Wi-Fi"), ("▼", "Città"), ("A tieni", "Indietro")])
+        ui.footer([("A", "Wi-Fi"), ("▼", "Città"), ("B", "Indietro")])
     else:
         _draw_message("nowifi", "Serve il Wi-Fi",
                       gfx.wrap("Collegati a una rete per scaricare le previsioni di %s."
                                % place["name"], 296), ui.TEXT)
-        ui.footer([("A", "Apri Wi-Fi"), ("▼", "Città"), ("A tieni", "Indietro")])
+        ui.footer([("A", "Apri Wi-Fi"), ("▼", "Città"), ("B", "Indietro")])
 
 
 class _Nav:
@@ -408,7 +408,7 @@ async def _pick_city(nav, place):
     items = [ui.Item(n, "✓" if n == place["name"] else None, tag=i) for i, n in enumerate(names)]
     it = await ui.menu(nav, "Città", items, icon=ICON,
                        sel=names.index(place["name"]) if place["name"] in names else 0,
-                       hints=[("A", "Scegli"), ("A tieni", "Indietro")])
+                       hints=[("A", "Scegli"), ("B", "Indietro")])
     if it is None:
         return None
     name, lat, lon = CITIES[it.tag]

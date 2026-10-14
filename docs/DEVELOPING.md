@@ -12,9 +12,8 @@ ESP32-S3 (240 MHz, 8 MB PSRAM: RAM is not scarce), 320x240 ILI9341 (landscape, R
 Wi-Fi + BLE, microSD (optional, often absent), LiPo with USB charging.
 
 Keys: a D-pad, **A** (right, upper), **B** (right, lower), and three transport keys under
-the screen: **prev ⏪**, **play ▶**, **next ⏩**. On some badges B and prev never register
-(their switches do not close): **every app must be fully usable with UP DOWN LEFT RIGHT,
-A, play and next only**. B and prev are extras.
+the screen: **prev ⏪**, **play ▶**, **next ⏩**. B is "back"; holding A is a second way
+back, so a screen stays usable even with a worn B key.
 
 ## The app contract
 
@@ -48,11 +47,12 @@ k, kind = B.key(ev), B.kind(ev)
 * kinds: `B.PRESS`, `B.RELEASE`, `B.REPEAT` (D-pad only, while held), `B.LONG` (held
   0.7 s, once), `B.CLICK` (released before LONG: use it for "select"), `sys.HOME`
   (leave now), `sys.REDRAW` (something drew over you: redraw everything).
-* `sys.is_back(ev)` is True for B pressed, **A held (LONG)**, or HOME. Use it everywhere
-  for "back". Because A-held means back, **select/confirm must act on `B.CLICK` of A**,
-  not on PRESS. D-pad movement acts on PRESS and REPEAT.
+* `sys.is_back(ev)` is True for B pressed, A held (LONG), or HOME. Use it everywhere for
+  "back" and show `("B", "Indietro")` in the footer. Because A-held is also back,
+  **select/confirm must act on `B.CLICK` of A**, not on PRESS. D-pad movement acts on
+  PRESS and REPEAT.
 * Games set `MEDIA_KEYS = True` and act on PRESS for responsiveness; their back is a
-  pause menu on play (or A held when paused). Never rely on B or prev alone.
+  pause menu on play.
 * With `MEDIA_KEYS = False`, play/prev/next control music playback whenever a track is
   loaded (you do not see them), and holding play opens the quick panel (you then get
   REDRAW). When no track is loaded you do receive their CLICKs.

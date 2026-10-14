@@ -395,7 +395,7 @@ class Studio:
             hints = [("A", "Accendi")]
         else:
             hints = [("◄►", "Regola")]
-        hints.append(("A tieni", "Esci"))
+        hints.append(("B", "Esci"))
         if hints == self.hints:
             return False
         self.hints = hints
@@ -502,7 +502,7 @@ class Studio:
                 ui.header(sys, "Colore", "palette")
                 for i in range(len(PRESETS) + 1):
                     self.draw_tile(i, i == sel, grad)
-                ui.footer([("A", "Scegli"), ("A tieni", "Annulla")])
+                ui.footer([("A", "Scegli"), ("B", "Annulla")])
             elif old != sel:
                 self.draw_tile(old, False, grad)
                 self.draw_tile(sel, True, grad)
@@ -569,7 +569,7 @@ class Studio:
             self.apply(self.preview_fx(), c)
             if full:
                 ui.header(sys, CUSTOM, "palette")
-                ui.footer([("A", "Scegli"), ("A tieni", "Annulla")])
+                ui.footer([("A", "Scegli"), ("B", "Annulla")])
                 for i in range(36 * 11):
                     gfx.fill_rect(FIELD_X + i % 36 * CELL_W, FIELD_Y + i // 36 * CELL_H, CELL_W, CELL_H,
                                   cells[i])

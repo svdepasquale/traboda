@@ -449,7 +449,7 @@ def _bar_key(sys):
 
 
 def _hints(has_items):
-    return [("A", "Trova"), ("A tieni", "Indietro")] if has_items else [("A tieni", "Indietro")]
+    return [("A", "Trova"), ("B", "Indietro")] if has_items else [("B", "Indietro")]
 
 
 def _push(sys, full, shown, has_items):
@@ -603,7 +603,7 @@ def _find_head(sys, d, addr):
     """Header and footer; returns the title drawn, so a name learned later redraws it."""
     title = _label(d) if d else _mac(addr)
     ui.header(sys, gfx.ellipsize(title, W - 44, "title"), "bt_scan")
-    ui.footer([("A", "Muto" if _sound else "Suono"), ("A tieni", "Indietro")])
+    ui.footer([("A", "Muto" if _sound else "Suono"), ("B", "Indietro")])
     return title
 
 
@@ -845,7 +845,7 @@ async def _nearby(sys, radio):
 
 def _draw_info(sys, ble, mac):
     y = ui.header(sys, "Info", "info")
-    ui.footer([("A tieni", "Indietro")])
+    ui.footer([("B", "Indietro")])
     on = ble.active()
     rows = (
         ("MAC", _mac(mac[1]) if mac else "non disponibile", ui.CYAN),
@@ -937,7 +937,7 @@ async def main(sys):
                      ui.Item("Badge vicini", None, "badge", tag="near", detail=_ABOUT["near"]),
                      ui.Item("Info", None, "info", tag="info", detail=_ABOUT["info"])]
             it = await ui.menu(sys, TITLE, items, icon=ICON, sel=sel,
-                               hints=[("A", "Apri"), ("A tieni", "Indietro")],
+                               hints=[("A", "Apri"), ("B", "Indietro")],
                                on_draw=lambda it: _root_detail(it, mac))
             if it is None:
                 return

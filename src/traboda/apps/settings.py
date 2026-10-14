@@ -146,7 +146,7 @@ async def main(sys):
     while True:
         items = _main_items(sys)
         it = await ui.menu(nav, TITLE, items, icon=ICON, sel=sel,
-                           hints=[("A", "Apri"), ("A tieni", "Indietro")])
+                           hints=[("A", "Apri"), ("B", "Indietro")])
         if it is None or nav.home:
             return
         sel = items.index(it)
@@ -195,7 +195,7 @@ async def _page(nav, title, icon, items, changed=None, notes=None, card=None, se
             _note(notes[it.tag], y)
 
     if hints is None:
-        hints = [("A tieni", "Indietro")]
+        hints = [("B", "Indietro")]
         if any(i.kind not in ("slider", "choice") for i in items):
             hints.insert(0, ("A", "Ok"))
         if any(i.kind in ("slider", "choice") for i in items):
@@ -226,7 +226,7 @@ async def _badge(nav):
         items = [ui.Item("Nickname", gfx.ellipsize(settings.get("nickname"), 150), "badge", tag="nickname"),
                  ui.Item("Tagline", gfx.ellipsize(settings.get("tagline"), 150), "info", tag="tagline")]
         it = await _page(nav, "Badge", "badge", items, card=_name_card, sel=sel,
-                         hints=[("A", "Modifica"), ("A tieni", "Indietro")])
+                         hints=[("A", "Modifica"), ("B", "Indietro")])
         if it is None or nav.home:
             return
         sel = items.index(it)
@@ -411,7 +411,7 @@ async def _set_clock(nav):
         if full:
             ui.header(nav, "Data e ora", "clock")
             gfx.text(tz.zone, 310, 26, ui.DIM, "small", align=-1)
-            ui.footer([("▲▼◄►", "Modifica"), ("A", "Salva"), ("A tieni", "Annulla")])
+            ui.footer([("▲▼◄►", "Modifica"), ("A", "Salva"), ("B", "Annulla")])
         _draw_fields(v, field)
         if full:
             nav.show()
@@ -602,7 +602,7 @@ async def _info(nav):
         rows = _info_rows(sys, fixed)
         if full:
             ui.header(nav, "Info sistema", "info")
-            ui.footer([("▲▼", "Scorri"), ("A tieni", "Indietro")])
+            ui.footer([("▲▼", "Scorri"), ("B", "Indietro")])
         else:
             ui.statusbar(nav)
         _draw_info(rows, top)
