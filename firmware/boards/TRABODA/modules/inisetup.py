@@ -25,7 +25,7 @@ def fs_corrupted():
     while 1:
         print(
             "The filesystem is corrupted. Reflash with: tools/flash.py --erase-fs\n"
-            "(that keeps Retro-Go, erases only Traboda's 'vfs' partition)."
+            "(Retro-Go's apps stay; Traboda's files and Retro-Go's internal storage go)."
         )
         time.sleep(3)
 

@@ -47,4 +47,6 @@ mkdir -p "$HERE/dist"
 cp "$BUILD/bootloader/bootloader.bin" "$HERE/dist/bootloader.bin"
 cp "$BUILD/partition_table/partition-table.bin" "$HERE/dist/partition-table.bin"
 cp "$BUILD/micropython.bin" "$HERE/dist/traboda.bin"
+# tools/flash.py checks the images against this file when it is there (a release has one).
+(cd "$HERE/dist" && if command -v sha256sum >/dev/null; then sha256sum *.bin; else shasum -a 256 *.bin; fi > SHA256SUMS)
 ls -l "$HERE/dist"

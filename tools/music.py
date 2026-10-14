@@ -18,6 +18,7 @@ ffmpeg) and mpremote; not while tools/companion.py holds the port.
 """
 
 import argparse
+import glob
 import os
 import re
 import shutil
@@ -146,7 +147,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix="traboda-music-") as tmp:
         files = []
         names = set()
-        for src in args.files:
+        # Windows shells pass wildcards through unexpanded; real names (even "a [b].mp3")
+        # are taken as they are.
+        for src in [m for a in args.files
+                    for m in ([a] if os.path.exists(a) else sorted(glob.glob(a)) or [a])]:
             if not os.path.isfile(src):
                 print("  skipped %s: no such file" % src)
                 continue
