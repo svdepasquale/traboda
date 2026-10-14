@@ -392,7 +392,7 @@ def _draw_classic(info):
 def _draw_idle_static(sys, reader):
     ui.header(sys, "NFC", "nfc")
     gfx.text("Avvicina una tessera", 160, 162, ui.TEXT, "title", align=1)
-    sub = "lettore sul retro del badge"
+    sub = "appoggiala sul logo Cyber Saiyan"
     if reader is None:
         sub = "lettore non disponibile"
     gfx.text(sub, 160, 192, ui.DIM, align=1)

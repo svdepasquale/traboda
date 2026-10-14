@@ -22,7 +22,7 @@ into them from its launcher, so the badge stays a retro console too.
 | Keys | D-pad, A, B, and Walkman transport keys (rewind, play, fast-forward) |
 | Audio | ES8156 DAC: 3.5 mm stereo jack + mono speaker |
 | Lights | 22 addressable RGB LEDs |
-| Extras | 13.56 MHz NFC reader/writer (Ci522, external antenna on U.FL), microSD, Qwiic/STEMMA QT port, LiPo + USB-C charging |
+| Extras | 13.56 MHz NFC reader/writer (Ci522, PCB antenna), microSD, Qwiic/STEMMA QT port, LiPo + USB-C charging |
 
 Pinout, quirks and what was measured on a real badge: [docs/hardware.md](docs/hardware.md).
 
@@ -55,7 +55,7 @@ console rather than a computer. Traboda OS is built for that.
 | Orologio | big clock, timer with the LED strip as progress, stopwatch, pomodoro |
 | Badge | conference name tag with your nickname and a matching LED animation |
 | Synth | seven-note instrument on the keys plus an 8-step sequencer on the LEDs |
-| NFC | reads ISO 14443-A cards and tags (UID, type, NTAG/Ultralight NDEF, MIFARE Classic default keys), saves dumps, writes URL/text to NTAG stickers. Needs a 13.56 MHz antenna on the badge's U.FL sockets (J3/J4) |
+| NFC | reads ISO 14443-A cards and tags (UID, type, NTAG/Ultralight NDEF, MIFARE Classic default keys), saves dumps, writes URL/text to NTAG stickers. Hold cards over the Cyber Saiyan logo, where the antenna coil is |
 | Wi-Fi | scan, connect with an on-screen keyboard, saved networks, channel chart, NTP |
 | Bluetooth | BLE scanner with vendors, a Geiger-style finder, and "Badge vicini" to spot other Traboda badges |
 | Meteo | Open-Meteo forecast for Italian cities, cached offline |
