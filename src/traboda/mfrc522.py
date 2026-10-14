@@ -1,7 +1,7 @@
 """Ci522 / MFRC522 13.56 MHz reader on the display's SPI bus.
 
 The reader shares SPI2 with the ILI9341, which the display drives at 40 MHz. Every public
-call here brackets its transfers with spi.init(4 MHz) ... spi.init(40 MHz) in a finally, so
+call here brackets its transfers with spi.init(1 MHz) ... spi.init(40 MHz) in a finally, so
 the bus is never left slow while the caller awaits and the display draws between calls.
 Register access keeps the RFID CS (GPIO44) low for one address byte plus the data; reads
 issue spi.read(1, 0) after the address. The IRQ pin is not wired, so transfers poll ComIrq
@@ -9,6 +9,13 @@ with the chip's own timer (set for a ~15 ms timeout) plus a wall-clock backstop.
 
 A reader held in NRSTPD power-down (power.rfid) reads VersionReg as 0; init() tolerates
 that (the simulator returns zeros) and never raises, so the app degrades to "no card".
+
+1 MHz and the receiver gain left at its reset value (RFCfgReg 0x48, 33 dB) are the stock
+firmware's settings and the ones that work with the badge's PCB coil. A tag held still for
+60 s while the polls cycled through four settings gave its UID 245 times out of 245 at
+1 MHz with the reset gain, 183 of 244 at 4 MHz with it, and 10 and 8 of 244 with the gain
+at 48 dB (RFCfgReg 0x70) at either rate: at that gain the answers come back too garbled to
+select.
 """
 
 import time
@@ -32,7 +39,6 @@ _TXCONTROL = 0x14
 _TXASK = 0x15
 _CRCRESULT_H = 0x21
 _CRCRESULT_L = 0x22
-_RFCFG = 0x26
 _TMODE = 0x2A
 _TPRESCALER = 0x2B
 _TRELOAD_H = 0x2C
@@ -60,7 +66,7 @@ _GET_VERSION = 0x60
 
 
 class MFRC522:
-    def __init__(self, spi, cs_pin, lo=4_000_000, hi=None):
+    def __init__(self, spi, cs_pin, lo=1_000_000, hi=None):
         self.spi = spi
         self.cs = Pin(cs_pin, Pin.OUT, value=1)
         self._lo = lo
@@ -117,7 +123,7 @@ class MFRC522:
     # -- setup -----------------------------------------------------------------------------
 
     def init(self):
-        """Soft reset, timer, 100% ASK, antenna on, max RX gain. Returns VersionReg."""
+        """Soft reset, timer, 100% ASK, antenna on. Returns VersionReg."""
         self._lock()
         try:
             self._wreg(_COMMAND, _SOFTRESET)
@@ -135,7 +141,6 @@ class MFRC522:
             v = self._rreg(_TXCONTROL)
             if (v & 0x03) != 0x03:
                 self._wreg(_TXCONTROL, v | 0x03)   # antenna drivers on
-            self._wreg(_RFCFG, 0x70)          # RxGain = 48 dB (max)
             self.ver = self._rreg(_VERSION)
         finally:
             self._unlock()

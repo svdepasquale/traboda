@@ -53,6 +53,10 @@ the boost can give: Traboda caps them at 60 % and defaults to 25 %.
   default on macOS) and lower RTS before DTR. After flashing, use
   `esptool --after watchdog-reset`: a reset through RTS latches the download strap and
   leaves the chip in the ROM bootloader.
+* **NFC settings**: talk to the Ci522 at 1 MHz and leave RFCfgReg at its reset value (0x48,
+  33 dB receiver gain), as the stock firmware does. With a tag held on the coil for 60 s,
+  polls cycling through four settings read its UID 245 times out of 245 that way, 183 of
+  244 at 4 MHz, and 10 and 8 of 244 with the gain at 48 dB (0x70) at either rate.
 * **MCLK**: the ES8156 is driven with MCLK = 256 fs on GPIO10. MicroPython's
   `machine.I2S` has no MCLK pin on the ESP32 port; `firmware/patches/` adds it.
 * **Flash layout** (`firmware/boards/TRABODA/partitions.csv`): the stock firmware's app
