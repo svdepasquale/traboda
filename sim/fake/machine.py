@@ -233,7 +233,7 @@ def freq(f=None):
 
 
 def unique_id():
-    return b"\x14\xc1\x9f\xc4\x3d\x4c"
+    return b"\x02\x00\x00\x00\x00\x01"   # locally administered, not a real unit
 
 
 def reset():

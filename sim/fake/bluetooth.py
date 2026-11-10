@@ -37,7 +37,7 @@ class BLE:
 
     def config(self, *a, **k):
         if a and a[0] == "mac":
-            return (0, b"\x14\xc1\x9f\xc4\x3d\x4e")
+            return (0, b"\x02\x00\x00\x00\x00\x03")
         return None
 
     def gap_scan(self, duration_ms, interval_us=None, window_us=None, active=False):

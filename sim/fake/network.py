@@ -10,7 +10,7 @@ AUTH_WPA2_PSK = 3
 
 _NETS = (
     (b"CasaMia", b"\x11\x22\x33\x44\x55\x66", 6, -48, 3, False),
-    (b"FRITZ!Box 7590", b"\x11\x22\x33\x44\x55\x67", 1, -61, 3, False),
+    (b"Ospiti", b"\x11\x22\x33\x44\x55\x67", 1, -61, 3, False),
     (b"RomHackCamp", b"\x11\x22\x33\x44\x55\x68", 11, -70, 0, False),
     (b"Vodafone-WiFi", b"\x11\x22\x33\x44\x55\x69", 6, -79, 3, False),
     (b"iPhone di Marco", b"\x11\x22\x33\x44\x55\x6a", 1, -84, 3, False),
@@ -61,11 +61,11 @@ class WLAN:
         return STAT_GOT_IP if self.isconnected() else STAT_IDLE
 
     def ifconfig(self, *a):
-        return ("192.168.178.42", "255.255.255.0", "192.168.178.1", "192.168.178.1")
+        return ("192.0.2.42", "255.255.255.0", "192.0.2.1", "192.0.2.1")
 
     def config(self, *a, **k):
         if a and a[0] == "mac":
-            return b"\x14\xc1\x9f\xc4\x3d\x4c"
+            return b"\x02\x00\x00\x00\x00\x01"
         if a and a[0] == "essid":
             return self._ssid or ""
         return None
