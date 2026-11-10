@@ -15,12 +15,12 @@
   options: --port PORT, --interval SECONDS
 
 Run it with python3 (pip install pyserial) or `uv run tools/companion.py`. The badge is
-found by USB vendor id (tools/badge.py, which asks mpremote: without it, pass --port) and
-its port is opened without resetting it (tools/dev.py open_serial); unplugged, in standby
-or in Retro-Go, it is waited for. The badge
-clock is set from the Mac on every connection. While this runs, mpremote, tools/dev.py and
-tools/music.py cannot use the port. Music and Spotify are asked what they play only when
-they are already running (macOS asks once to allow it); nothing is ever launched.
+found by USB vendor id (tools/badge.py, through pyserial) and its port is opened without
+resetting it (tools/dev.py open_serial); unplugged, in standby or in Retro-Go, it is
+waited for. The badge clock is set from the Mac on every connection. While this runs,
+mpremote, tools/dev.py and tools/music.py cannot use the port. Music and Spotify are
+asked what they play only when they are already running (macOS asks once to allow it);
+nothing is ever launched.
 """
 
 import argparse
@@ -147,12 +147,7 @@ def wait_for_badge(explicit):
         return explicit
     told = False
     while True:
-        try:
-            found = badge.list_badges()
-        except FileNotFoundError:
-            sys.exit("mpremote not found (pip install mpremote), or pass --port")
-        except subprocess.CalledProcessError:
-            found = []
+        found = badge.list_badges()
         if len(found) == 1:
             return found[0][0]
         if len(found) > 1:

@@ -126,8 +126,8 @@ class System:
         return self._home
 
     def is_back(self, ev):
-        """B pressed, A held, or HOME. A-held keeps every badge usable: on some units the
-        B and rewind switches never close (see docs/hardware.md)."""
+        """B pressed, A held, or HOME. A held is a second way back, so a screen stays usable
+        with a worn B key."""
         k, kind = B.key(ev), B.kind(ev)
         return kind == HOME or (k == B.B and kind == B.PRESS) or (k == B.A and kind == B.LONG)
 

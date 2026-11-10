@@ -1,7 +1,7 @@
 """Commands from the Mac over the USB serial line, while the OS keeps running.
 
 A line starting with "@@TRB " is a command; anything else is ignored. Ctrl-C still stops
-the OS and drops to the REPL. tools/badgectl.py speaks this protocol:
+the OS and drops to the REPL. tools/dev.py and tools/companion.py speak this protocol:
 
   @@TRB ping                  -> @@PONG
   @@TRB snap                  -> @@SNAP <bytes>, base64 lines, @@END   (framebuffer)

@@ -1,7 +1,7 @@
 """Finds the badge among the serial devices, by USB vendor id, never by port name.
 
-The badge is an ESP32-S3: Espressif's vendor id 0x303a, both in the ROM bootloader
-(USB-Serial-JTAG, 303a:1001) and under MicroPython (TinyUSB CDC). Anything else on the
+The badge is an ESP32-S3: Espressif's vendor id 0x303a, on its USB-Serial-JTAG port
+(303a:1001), which serves both the ROM bootloader and MicroPython. Anything else on the
 bus, a Raspberry Pi Pico running MicroPython for instance (2e8a:0005), is ignored.
 """
 
