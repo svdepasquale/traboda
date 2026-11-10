@@ -118,8 +118,5 @@ async def main(sys):
             sel = max(0, sel - COLS)
         if sel != old:
             _sel = sel
-            if old // PER_PAGE != sel // PER_PAGE:
-                _draw_grid(sel)
-            else:
-                _draw_grid(sel)
+            _draw_grid(sel)
             sys.show(GRID_Y - 2, ui.FOOTER_Y)

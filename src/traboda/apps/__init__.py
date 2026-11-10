@@ -16,15 +16,3 @@ APPS = (
     ("files", "File", "files"),
     ("settings", "Impostazioni", "settings"),
 )
-
-
-def available():
-    """The registry minus apps whose module is missing from this build."""
-    out = []
-    for mod, title, icon in APPS:
-        try:
-            __import__("traboda.apps." + mod + "_meta")
-        except ImportError:
-            pass
-        out.append((mod, title, icon))
-    return out
