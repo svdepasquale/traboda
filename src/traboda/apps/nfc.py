@@ -201,6 +201,21 @@ def ndef_tlv(msg):
 
 # -- type + reading ------------------------------------------------------------------------
 
+# GET_VERSION storage-size code (byte 6) -> bytes of user memory the NDEF area may use:
+# Ultralight EV1 MF0UL11 / MF0UL21, NTAG213 / 215 / 216. The CC size byte is this / 8.
+UL_SIZES = {0x0B: 48, 0x0E: 128, 0x0F: 144, 0x11: 496, 0x13: 872}
+
+
+def ul_capacity(cc, gv):
+    """User memory of an NTAG/Ultralight in bytes. cc: page 3 (None when unread), gv: the
+    GET_VERSION reply (None without one). The CC when it is set, never above what
+    GET_VERSION says; with neither, 48 (a plain Ultralight, the smallest)."""
+    known = UL_SIZES.get(gv[6]) if gv and len(gv) >= 7 else None
+    if cc and cc[0] == 0xE1:
+        size = cc[2] * 8
+        return min(size, known) if known else size
+    return known or 48
+
 def guess_type(sak, gv):
     if sak & 0x20:
         return "ISO 14443-4", "carta bancaria o trasporti", "isodep"
@@ -546,7 +561,13 @@ async def write_flow(sys, reader, info, make_record, prompt, default):
         return
     data = ndef_tlv(make_record(text))
     head = reader.read_block(0)
-    cc = head[12:16] if head else bytes(4)
+    cc = head[12:16] if head else None
+    gv = bytes.fromhex(info["ver"]) if info.get("ver") else None
+    room = ul_capacity(cc, gv)
+    if len(data) > room:                             # past it are config and lock pages
+        await ui.dialog(sys, "Troppo lungo",
+                        "La tessera ha %d byte, ne servono %d." % (room, len(data)))
+        return
     ok = True
     page = 4
     for off in range(0, len(data), 4):
@@ -558,8 +579,8 @@ async def write_flow(sys, reader, info, make_record, prompt, default):
             break
         page += 1
         await sys.sleep_ms(3)
-    if ok and cc[0] == 0x00:                         # blank tag: make it NDEF-capable
-        reader.ul_write(3, b"\xe1\x10\x12\x00")
+    if ok and cc and cc[0] == 0x00:                  # blank tag: make it NDEF-capable
+        reader.ul_write(3, bytes((0xE1, 0x10, room // 8, 0x00)))   # one-time programmable
     recs = await _verify(sys, reader, text) if ok else None
     reader.halt()
     if recs is not None:
