@@ -1,37 +1,11 @@
 """The music queue behind the Walkman: lives in the system, so playback goes on while
 other apps run and the transport keys work from anywhere."""
 
-import os
 import random
 
 from . import settings
 
 EXTS = (".wav",)
-
-
-def list_tracks(folder):
-    """Audio files under folder (one level of sub-folders), sorted by path."""
-    out = []
-    try:
-        entries = sorted(os.listdir(folder))
-    except OSError:
-        return out
-    for name in entries:
-        path = folder.rstrip("/") + "/" + name
-        try:
-            is_dir = os.stat(path)[0] & 0x4000
-        except OSError:
-            continue
-        if is_dir:
-            try:
-                for sub in sorted(os.listdir(path)):
-                    if sub.lower().endswith(EXTS) and not sub.startswith("."):
-                        out.append(path + "/" + sub)
-            except OSError:
-                pass
-        elif name.lower().endswith(EXTS) and not name.startswith("."):
-            out.append(path)
-    return out
 
 
 def title_of(path):

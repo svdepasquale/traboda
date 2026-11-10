@@ -204,20 +204,38 @@ def _audio(name):
     return name.lower().endswith(EXTS) and not name.startswith(".")
 
 
+def _listdir(path):
+    """[(name, type)] of path, sorted. The badge's FAT keeps names in code page 437, so
+    an accented name written by a computer is not UTF-8 and cannot become a str: that
+    entry is skipped and the listing goes on. Raises OSError."""
+    out = []
+    it = os.ilistdir(path)
+    while True:
+        try:
+            e = next(it)
+        except StopIteration:
+            break
+        except ValueError:                      # UnicodeError
+            continue
+        out.append((e[0], e[1]))
+    out.sort()
+    return out
+
+
 async def _scan(folder):
     """Audio files under folder and its sub-folders (one level), sorted. One directory
     read per folder (no stat per file), yielding between folders so the music goes on."""
     root = folder.rstrip("/")
     out = []
     try:
-        entries = sorted(os.ilistdir(root))
+        entries = _listdir(root)
     except OSError:
         return out
     for e in entries:
         name, path = e[0], root + "/" + e[0]
         if e[1] == 0x4000 and not name.startswith("."):
             try:
-                subs = sorted(f[0] for f in os.ilistdir(path) if f[1] != 0x4000)
+                subs = [f[0] for f in _listdir(path) if f[1] != 0x4000]
             except OSError:
                 continue
             out.extend(path + "/" + f for f in subs if _audio(f))
