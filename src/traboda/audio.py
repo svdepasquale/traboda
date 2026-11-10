@@ -245,11 +245,11 @@ class Audio:
                     f.seek(data_start + min(self._seek_to, size))
                     self.position = min(self._seek_to, size)
                     self._seek_to = None
-                n = f.readinto(buf)
-                if n <= 0 or self.position >= size:
+                n = min(f.readinto(buf), size - self.position)   # stop at the data chunk's end
+                n -= n % frame
+                if n <= 0:
                     self.ended = True
                     break
-                n -= n % frame
                 self.position += n
                 self.levels = _peaks(buf, n, channels)
                 out.out_buf = mv[:n]

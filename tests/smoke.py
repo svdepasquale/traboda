@@ -105,6 +105,15 @@ def main():
         failures.append("hostlink:\n" + "\n".join(text.strip().splitlines()[-12:]))
     print("%-18s #0 %s" % ("hostlink", "FAIL" if bad else "ok"))
 
+    out = os.path.join(out_root, "wav")
+    os.makedirs(out, exist_ok=True)
+    r = subprocess.run([args.micropython, os.path.join(ROOT, "tests/wav_end.py"), out],
+                       capture_output=True, text=True, cwd=ROOT, timeout=300)
+    bad = r.returncode != 0
+    if bad:
+        failures.append("wav_end:\n" + "\n".join((r.stdout + r.stderr).strip().splitlines()[-12:]))
+    print("%-18s #0 %s" % ("wav_end", "FAIL" if bad else "ok"))
+
     if args.keep:
         print("screenshots: python3 sim/topng.py <dir> under", out_root)
     else:
