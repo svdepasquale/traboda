@@ -271,7 +271,7 @@ async def _screen(nav):
     await _page(nav, "Schermo", "set_screen", items, changed, {
         "brightness": "Si regola anche dal pannello rapido: tieni premuto ►.",
         "sleep_after": "Senza tasti premuti per questo tempo lo schermo si spegne; un tasto lo "
-                       "riaccende. La modifica vale dal prossimo riavvio.",
+                       "riaccende.",
     })
 
 
