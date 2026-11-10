@@ -5,13 +5,16 @@ Writes the bootloader (0x0), the partition table (0x8000) and Traboda (0x10000) 
 firmware/dist/ (or --dist DIR, checked against the SHA256SUMS next to the files). With
 --download it first fetches them from a GitHub release, the latest or the tag given.
 
-When the badge's partition table is not Traboda's (the first install, over the stock
-firmware) it also erases Traboda's filesystem and Retro-Go's FAT fallback, where the stock
-firmware kept its own storage; --erase-fs does the same on purpose, to start over. The boot
+Before writing anything it reads the device's partition table: Retro-Go's partitions must
+sit where the badge keeps them, or nothing is written (another ESP32-S3 board on USB stays
+as it was; --force writes anyway, for a badge whose flash was erased). When the table has
+no Traboda filesystem yet (the first install, over the stock firmware) it also erases
+Traboda's filesystem and Retro-Go's FAT fallback, where the stock firmware kept its own
+storage; --erase-fs does the same on purpose, to start over. The boot
 selector (otadata) is blanked every time, so the badge starts Traboda even when it was left
 in Retro-Go. Retro-Go's apps (0x410000-0x740000) are never written.
 
-Usage: tools/flash.py [--download [TAG]] [--dist DIR] [--erase-fs] [--port PORT]
+Usage: tools/flash.py [--download [TAG]] [--dist DIR] [--erase-fs] [--port PORT] [--force]
        tools/flash.py --backup FILE        read the whole 16 MB flash into FILE
        tools/flash.py --restore FILE --yes write a full backup back (the stock firmware)
 """
@@ -46,6 +49,8 @@ EXPECTED = {
     "data": (0x742000, 0x200000),
     "vfs": (0x942000, 0x6BE000),
 }
+# On every RomHack badge, stock or Traboda: the device check before any erase or write.
+BADGE_PARTS = ("launcher", "retro-core", "prboom-go", "otadata")
 
 
 def read_table(path):
@@ -79,6 +84,15 @@ def esptool_cmd():
     if int(m.group(1)) < 5:
         sys.exit("esptool %s found, this needs 5 or newer (see the README, Install)" % m.group(0))
     return cmd
+
+
+def reboot(esptool):
+    """Out of the ROM bootloader into the flashed app. A reset through the USB-Serial-JTAG's
+    RTS line latches the download strap and leaves the chip in the ROM bootloader; the
+    watchdog reboots it clean. The port vanishes under esptool while it does, which it may
+    report as an error: anything written is already verified."""
+    subprocess.run(esptool + ["--before", "no-reset", "--after", "watchdog-reset", "chip-id"],
+                   capture_output=True)
 
 
 def check_sums(folder):
@@ -139,6 +153,8 @@ def main():
     ap.add_argument("--backup", metavar="FILE", help="read the whole flash into FILE")
     ap.add_argument("--restore", metavar="FILE", help="write a full 16 MB image at 0x0")
     ap.add_argument("--yes", action="store_true", help="confirm --restore")
+    ap.add_argument("--force", action="store_true",
+                    help="write even when the device's partition table is not a RomHack badge's")
     args = ap.parse_args()
 
     if args.backup or args.restore:
@@ -181,10 +197,17 @@ def main():
         current = os.path.join(tmp, "table.bin")
         subprocess.run(esptool + ["--after", "no-reset", "read-flash", "0x8000", "0xc00", current],
                        check=True)
-        with open(current, "rb") as a, open(files["partition-table.bin"], "rb") as b:
-            first = a.read() != b.read()
+        on_device = read_table(current)
+    odd = [label for label in BADGE_PARTS if on_device.get(label) != EXPECTED[label]]
+    if odd and not args.force:
+        reboot(esptool)
+        sys.exit("the device on %s does not look like a RomHack badge (no %s where the badge "
+                 "keeps it): nothing written. Unplug other Espressif boards or pick the badge "
+                 "with --port; for a badge whose flash was erased, add --force"
+                 % (port, ", ".join(odd)))
+    first = on_device.get("vfs") != EXPECTED["vfs"]
     if first:
-        print("first install on this badge (its partition table is not Traboda's): "
+        print("first install on this badge (no Traboda filesystem in its partition table): "
               "erasing the old storage, 0x742000 to the end", flush=True)
     if first or args.erase_fs:
         erase += ["data", "vfs"]
@@ -206,11 +229,7 @@ def main():
     offset, size = EXPECTED["otadata"]
     subprocess.run(esptool + ["--after", "no-reset", "erase-region", hex(offset), hex(size)],
                    check=True)
-    # A reset through the USB-Serial-JTAG's RTS line latches the download strap and leaves
-    # the chip in the ROM bootloader; the watchdog reboots it clean. The port vanishes under
-    # esptool while it does, which it may report as an error: the image is already verified.
-    subprocess.run(esptool + ["--before", "no-reset", "--after", "watchdog-reset", "chip-id"],
-                   capture_output=True)
+    reboot(esptool)
     print("done: Traboda flashed on %s (Retro-Go untouched). If the screen stays dark, "
           "slide the switch off and on." % port, flush=True)
 

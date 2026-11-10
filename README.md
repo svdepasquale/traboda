@@ -108,7 +108,9 @@ badge restarts into Traboda. On the first install it also erases the stock firmw
 internal storage, where Traboda keeps its own files: Tactility's settings and Wi-Fi, the
 preloaded MP3s and Doom WAD, and Retro-Go saves made without a card (your backup has them).
 Retro-Go itself stays, and the microSD card is never touched. `tools/flash.py` finds the
-badge by its USB vendor id, so other boards plugged in are left alone.
+badge by its USB vendor id and, before writing, checks that the partition table on it is a
+RomHack badge's: another ESP32-S3 board plugged in is left alone (`--force` writes anyway,
+for a badge whose flash was erased).
 
 ### 4. First steps
 
