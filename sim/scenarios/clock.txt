@@ -14,3 +14,5 @@ wait:800,key:right,key:A,wait:300,hold:A,wait:300,snap:conferma,hold:A,wait:600,
 wait:800,key:left,key:A,wait:300,hold:play,wait:400,hold:A,wait:400,snap:ridisegno,hold:B,wait:600,snap:home
 # Pomodoro paused: nothing runs, so the footer offers exit and one back leaves at once.
 wait:800,key:left,key:A,wait:300,key:A,wait:300,snap:sospeso,hold:A,wait:500,snap:home
+# Timer over a playing track: the alarm pauses it, play stops the alarm and resumes the track.
+wait:300,app:music,wait:800,key:A,wait:300,hold:B,wait:500,app:clock,wait:800,key:right,wait:200,down:down,wait:2600,up:down,wait:200,key:A,wait:6000,snap:allarme_musica,key:play,wait:400,snap:ripresa

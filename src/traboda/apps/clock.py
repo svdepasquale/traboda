@@ -510,8 +510,39 @@ class _App:
         self.dots = None
         self.hints = None
         self.swallow = 0            # keys whose release/click/long are ignored until pressed again
+        self.ring_claim = None      # claim_media to restore once the alarm is over
+        self.unclaim = 0            # key that stopped the alarm: claim restored on its release
+        self.paused_music = False   # the alarm paused the track (tone() is silent under it)
         self.exit_until = None      # a second "back" before this leaves while a timer runs
         self.awake = time.ticks_ms()
+
+    def start_ring(self):
+        """The track pauses so the ringtone sounds, and the transport keys reach the app
+        (with a track loaded the core would act on them), so any key stops the alarm."""
+        sys = self.sys
+        if sys.audio.playing and not sys.audio.paused:
+            sys.player.play_pause()
+            self.paused_music = True
+        if self.ring_claim is None:
+            self.ring_claim = sys.claim_media
+        sys.claim_media = True
+
+    def stop_ring(self, m):
+        """m: the key that stopped it; the claim stays until its release, which would
+        otherwise reach the core as a play/pause or skip."""
+        self.timer.reset()
+        _flash(self.sys, (0, 0, 0), 0)
+        self.unclaim = m
+        if self.paused_music:
+            self.paused_music = False
+            if self.sys.audio.paused:
+                self.sys.player.play_pause()
+
+    def unclaim_media(self):
+        if self.ring_claim is not None:
+            self.sys.claim_media = self.ring_claim
+            self.ring_claim = None
+        self.unclaim = 0
 
     def busy(self):
         return self.timer.state in (RUN, RING) or self.watch.running or self.pomo.state == RUN
@@ -526,6 +557,7 @@ class _App:
             self.valid = tz.clock_valid()
         rang = self.timer.tick(now)
         if rang:
+            self.start_ring()
             self.tab = TIMER
             self.exit_until = None
             if not sys.screen_on:
@@ -626,15 +658,16 @@ class _App:
                 full = True
                 continue
             m = 1 << k
+            if self.unclaim & m and kind == B.RELEASE:
+                self.unclaim_media()
             if self.swallow & m:
                 if kind != B.PRESS:
                     continue
                 self.swallow &= ~m
             if self.timer.state == RING:
                 if kind == B.PRESS:
-                    self.timer.reset()
+                    self.stop_ring(m)
                     self.swallow |= m
-                    _flash(sys, (0, 0, 0), 0)
                 continue
             if sys.is_back(ev):
                 if self.exit_until is not None or not self.busy():
@@ -647,6 +680,8 @@ class _App:
                 self.tabs[self.tab].key(k, kind, time.ticks_ms())
 
     def close(self):
+        if self.paused_music and self.sys.audio.paused:     # left while it rang
+            self.sys.player.play_pause()
         leds = self.sys.leds
         if leds:
             _flash(self.sys, (0, 0, 0), 0)
