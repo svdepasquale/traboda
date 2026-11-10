@@ -216,6 +216,12 @@ def _expire(now, focus=None):
                       key=_by_rssi)
         for d in weak[:len(_devs) - DEV_MAX]:
             del _devs[d.addr]
+    if len(_devs) > DEV_MAX:        # a flood of badge names: absent ones go, longest unseen first
+        gone = sorted((d for d in _devs.values() if d.addr != focus and
+                       time.ticks_diff(now, d.last) >= PRESENT_MS),
+                      key=lambda d: -time.ticks_diff(now, d.last))
+        for d in gone[:len(_devs) - DEV_MAX]:
+            del _devs[d.addr]
 
 
 def _by_rssi(d):
