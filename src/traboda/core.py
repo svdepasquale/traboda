@@ -289,7 +289,10 @@ class System:
                     if idle > sleep_after * 1000:
                         self.screen_off()
                 for cmd in self.hostlink.pump():
-                    self.hostlink.handle(cmd)
+                    try:
+                        self.hostlink.handle(cmd)
+                    except Exception as e:  # noqa: BLE001 - a malformed command must not end this task
+                        self.errors.append("hostlink %s: %s" % (cmd.partition(" ")[0], e))
             except OSError as e:
                 self.errors.append("input: %s" % e)
             await asyncio.sleep_ms(10)

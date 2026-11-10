@@ -92,6 +92,19 @@ def main():
                 failures.append("%s scenario %d:\n%s" % (name, n, tail))
             print("%-18s #%d %s" % (name, n, "FAIL" if bad else "ok"))
 
+    # Host link: malformed commands must not stop the input task (the later ping answers).
+    out = os.path.join(out_root, "hostlink")
+    os.makedirs(out, exist_ok=True)
+    lines = ["ping", "key A 1.5", "time abc", 'wifi ["x"]', "stats {", "ping"]
+    r = subprocess.run([args.micropython, os.path.join(ROOT, "sim/run.py"), out, "wait:1500,snap:x"],
+                       input="".join("@@TRB %s\n" % ln for ln in lines), capture_output=True,
+                       text=True, cwd=ROOT, timeout=300)
+    text = r.stdout + r.stderr
+    bad = "Traceback" in text or r.returncode != 0 or text.count("@@PONG") != 2
+    if bad:
+        failures.append("hostlink:\n" + "\n".join(text.strip().splitlines()[-12:]))
+    print("%-18s #0 %s" % ("hostlink", "FAIL" if bad else "ok"))
+
     if args.keep:
         print("screenshots: python3 sim/topng.py <dir> under", out_root)
     else:
