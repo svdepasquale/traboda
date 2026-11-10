@@ -1,9 +1,6 @@
 """Fake esp32 module: partitions as on the badge, sleep wake sources."""
 
 WAKEUP_ALL_LOW = False
-WAKEUP_ANY_HIGH = True
-HEAP_DATA = 0
-HEAP_EXEC = 1
 
 
 class Partition:
@@ -46,28 +43,3 @@ class Partition:
 def wake_on_ext0(pin, level):
     pass
 
-
-def wake_on_ext1(pins, level):
-    pass
-
-
-def gpio_deep_sleep_hold(enable):
-    pass
-
-
-def idf_heap_info(cap):
-    return [(8 * 1024 * 1024, 7 * 1024 * 1024, 4 * 1024 * 1024, 6 * 1024 * 1024)]
-
-
-class NVS:
-    def __init__(self, ns):
-        self.d = {}
-
-    def get_i32(self, k):
-        return self.d[k]
-
-    def set_i32(self, k, v):
-        self.d[k] = v
-
-    def commit(self):
-        pass

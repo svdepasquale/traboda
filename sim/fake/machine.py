@@ -161,9 +161,6 @@ class ADC:
     def read_uv(self):
         return int(state.battery_volts * 470 / 1970 * 1_000_000)
 
-    def read_u16(self):
-        return 30000
-
 
 class I2S(io.IOBase):
     TX = 0
@@ -175,7 +172,6 @@ class I2S(io.IOBase):
                  format=1, rate=22050, ibuf=20000):
         self.rate = rate
         self.channels = 2 if format == 1 else 1
-        state.audio_rate = rate
 
     def write(self, buf):
         n = len(buf)
@@ -198,7 +194,7 @@ class RTC:
         if t is None:
             g = time.gmtime()
             return (g[0], g[1], g[2], g[6], g[3], g[4], g[5], 0)
-        state.rtc_set = t
+        return None
 
 
 class SDCard:
@@ -213,19 +209,6 @@ class _Mem:
 
 
 mem32 = _Mem()
-mem16 = _Mem()
-mem8 = _Mem()
-
-
-class Timer:
-    def __init__(self, *a, **k):
-        pass
-
-    def init(self, *a, **k):
-        pass
-
-    def deinit(self):
-        pass
 
 
 def freq(f=None):
@@ -240,18 +223,6 @@ def reset():
     raise SystemExit("machine.reset()")
 
 
-def soft_reset():
-    raise SystemExit("machine.soft_reset()")
-
-
 def deepsleep(ms=0):
-    state.deepsleep = True
     raise SystemExit("machine.deepsleep()")
 
-
-def lightsleep(ms=0):
-    time.sleep_ms(ms or 1)
-
-
-def idle():
-    pass

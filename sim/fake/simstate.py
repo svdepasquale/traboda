@@ -9,10 +9,7 @@ leds = [(0, 0, 0)] * 22     # chain order, as written
 battery_volts = 4.05
 usb = True
 frame = 0
-audio_rate = 0
 audio_bytes = 0
-rtc_set = None
-deepsleep = False
 
 # buttons index -> AW9523 bit (see traboda/board.py)
 _EX_BITS = {0: 6, 1: 3, 2: 5, 3: 2, 4: 0, 5: 9, 6: 1, 7: 8}
