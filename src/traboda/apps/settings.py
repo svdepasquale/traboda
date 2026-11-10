@@ -784,11 +784,23 @@ async def _standby(nav):
 
 
 async def _factory(nav):
-    msg = "Cancella nickname, reti Wi-Fi salvate, record dei giochi e preferenze, poi riavvia il badge."
+    msg = ("Cancella nickname, reti Wi-Fi salvate, record dei giochi, preferenze e archivio "
+           "NFC, poi riavvia il badge.")
     if await ui.dialog(nav, "Ripristinare tutto?", msg, ("Annulla", "Azzera")) != 1:
         return
+    nfc = paths.data("nfc")
     try:
-        os.remove(paths.data("settings.json"))
+        names = os.listdir(nfc)
+    except OSError:
+        names = []
+    for path in [nfc + "/" + n for n in names] + [paths.data("weather.json"),
+                                                  paths.data("settings.json")]:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    try:
+        os.rmdir(nfc)
     except OSError:
         pass
     settings.load()
