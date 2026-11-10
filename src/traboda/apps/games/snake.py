@@ -263,42 +263,8 @@ class Snake:
             await asyncio.sleep_ms(110)
 
 
-def _pause_key(ev):
-    """Play, A held, or a tap on B (B held is HOME and leaves the game)."""
-    k, kind = B.key(ev), B.kind(ev)
-    return common.wants_pause(ev) or (k == B.A and kind == B.LONG) or (k == B.B and kind == B.CLICK)
-
-
-def _discard(sys):
-    """Drops the events queued meanwhile; False on HOME (common.drain would spin on the
-    HOME of a pending app, so that is checked first)."""
-    if sys.pending_app():
-        return False
-    for ev in common.drain(sys):
-        if B.kind(ev) == sys.HOME:
-            return False
-    return True
-
-
-async def _start(sys, game):
-    """Countdown over a fresh frame; False if HOME arrived meanwhile."""
-    common.leds_frame(sys, game.led)
-    await common.countdown(sys, game.draw_all)
-    return _discard(sys)
-
-
-async def _settle(sys):
-    """Waits (up to 1 s) for the keys still held from play, which would otherwise answer
-    the game-over dialog, then drops them; False on HOME."""
-    for _ in range(50):
-        if not sys.buttons.state:
-            break
-        await asyncio.sleep_ms(20)
-    return _discard(sys)
-
-
 async def _play(sys, game):
-    if not await _start(sys, game):
+    if not await common.start(sys, game):
         return
     tick = common.Ticker(100)
     due = time.ticks_add(time.ticks_ms(), game.ms)
@@ -312,14 +278,14 @@ async def _play(sys, game):
             if kind == sys.REDRAW:
                 game.draw_all()
                 sys.show()
-            elif _pause_key(ev):
+            elif common.pause_key(ev):
                 choice = await common.pause_menu(sys, TITLE)
                 if choice == "quit":
                     return
                 if choice == "restart":
                     settings.score(GAME_ID, game.score)
                     game.reset()
-                if not await _start(sys, game):
+                if not await common.start(sys, game):
                     return
                 due = time.ticks_add(time.ticks_ms(), game.ms)
                 break
@@ -333,12 +299,12 @@ async def _play(sys, game):
             if not game.step() or game.won:
                 if not game.won:
                     await game.crash()
-                if not await _settle(sys):
+                if not await common.wait_keys_up(sys):
                     return
                 if await common.game_over(sys, GAME_ID, TITLE, game.score, game.won) == "quit":
                     return
                 game.reset()
-                if not await _start(sys, game):
+                if not await common.start(sys, game):
                     return
                 due = time.ticks_add(time.ticks_ms(), game.ms)
         game.flush()

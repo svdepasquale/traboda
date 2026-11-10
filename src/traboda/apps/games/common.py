@@ -137,3 +137,38 @@ async def game_over(sys, game_id, title, score, won=False):
 def wants_pause(ev):
     """Play pressed: games open the pause menu with it."""
     return B.key(ev) == B.PLAY and B.kind(ev) == B.PRESS
+
+
+def pause_key(ev):
+    """Play, A held, or a tap on B (B held is HOME and leaves the game)."""
+    k, kind = B.key(ev), B.kind(ev)
+    return wants_pause(ev) or (k == B.A and kind == B.LONG) or (k == B.B and kind == B.CLICK)
+
+
+def discard(sys):
+    """Drops the events queued meanwhile; False on HOME, and at once when an app switch
+    is already pending (the core then keeps answering HOME)."""
+    if sys.pending_app():
+        return False
+    for ev in drain(sys):
+        if B.kind(ev) == sys.HOME:
+            return False
+    return True
+
+
+async def start(sys, game):
+    """Countdown over a fresh frame; False if HOME arrived meanwhile."""
+    leds_frame(sys, game.led)
+    await countdown(sys, game.draw_all)
+    return discard(sys)
+
+
+async def wait_keys_up(sys):
+    """Waits (up to 1 s) for the keys still held from play, which would otherwise answer
+    the game-over dialog, then drops them; False on HOME. Unlike settle() below it
+    reports a HOME that arrived, so the game can leave at once."""
+    for _ in range(50):
+        if not sys.buttons.state:
+            break
+        await asyncio.sleep_ms(20)
+    return discard(sys)

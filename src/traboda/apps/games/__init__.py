@@ -1,7 +1,6 @@
 """Games hub: the list of games, best scores, and the launch of the chosen one."""
 
-from ... import buttons as B
-from ... import icons, settings, ui
+from ... import settings, ui
 
 TITLE = "Giochi"
 ICON = "games"

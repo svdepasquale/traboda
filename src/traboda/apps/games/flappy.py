@@ -4,7 +4,6 @@ a pipe just left and the bird's column, redraws the pipes as rectangles and the 
 sprite. A pipe touches every row of the field, so instead of whole rows each frame pushes
 rectangles: one per pipe on screen, one around the bird, plus the grass band."""
 
-import asyncio
 import framebuf
 import random
 
@@ -53,33 +52,6 @@ _SWEEP = ((45, 226, 230), (18, 100, 104), (5, 34, 36))
 _GREEN = (61, 220, 132)
 _GOLD = (255, 214, 10)
 _OFF = (0, 0, 0)
-
-
-def _pause_key(ev):
-    """Play, A held, or a tap on B (B held is HOME and leaves the game)."""
-    k, kind = B.key(ev), B.kind(ev)
-    return common.wants_pause(ev) or (k == B.A and kind == B.LONG) or (k == B.B and kind == B.CLICK)
-
-
-def _discard(sys):
-    """Drops the events queued meanwhile; False on HOME (common.drain would spin on the
-    HOME of a pending app, so that is checked first)."""
-    if sys.pending_app():
-        return False
-    for ev in common.drain(sys):
-        if B.kind(ev) == sys.HOME:
-            return False
-    return True
-
-
-async def _settle(sys):
-    """Waits (up to 1 s) for the keys still held from play, which would otherwise answer
-    the game-over dialog, then drops them; False on HOME."""
-    for _ in range(50):
-        if not sys.buttons.state:
-            break
-        await asyncio.sleep_ms(20)
-    return _discard(sys)
 
 
 def _sky():
@@ -387,7 +359,7 @@ class Game:
                     self.paint()
                 elif kind == sys.HOME:
                     return self.leave("quit")
-                elif self.state != DEAD and _pause_key(ev):
+                elif self.state != DEAD and common.pause_key(ev):
                     choice = await common.pause_menu(sys, TITLE)
                     if choice != "resume" or sys.pending_app():
                         return self.leave("quit" if sys.pending_app() else choice)
@@ -395,7 +367,7 @@ class Game:
                         self.state = READY      # hover until the next flap
                         self.hover = self.by
                     self.paint()
-                    if not _discard(sys):
+                    if not common.discard(sys):
                         return self.leave("quit")
                     break
                 elif kind == B.PRESS and k in (B.A, B.UP, B.NEXT):
@@ -423,7 +395,7 @@ class Game:
                 self.render()
                 self.show_leds()
                 await sys.sleep_ms(500)
-                if not await _settle(sys):
+                if not await common.wait_keys_up(sys):
                     return self.leave("quit")
                 return await common.game_over(sys, GAME_ID, TITLE, self.score)
             self.render()
