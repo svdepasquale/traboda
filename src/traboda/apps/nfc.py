@@ -655,11 +655,7 @@ def save_dump(info):
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(info, f)
-    try:
-        os.remove(path)
-    except OSError:
-        pass
-    os.rename(tmp, path)
+    os.rename(tmp, path)                             # replaces the old dump in one step
     return path
 
 
