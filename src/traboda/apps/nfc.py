@@ -117,6 +117,33 @@ def ndef_message(user):
     return b""
 
 
+def ndef_end(user):
+    """Length of a TLV area up to the end of its NDEF message (or the terminator), or None
+    while user is too short to tell. A 0xFE inside a TLV's data is not the end."""
+    i = 0
+    n = len(user)
+    while i < n:
+        t = user[i]
+        if t == 0x00:
+            i += 1
+            continue
+        if t == 0xFE:
+            return i + 1
+        if i + 1 >= n:
+            return None
+        length = user[i + 1]
+        j = i + 2
+        if length == 0xFF:
+            if i + 3 >= n:
+                return None
+            length = user[i + 2] << 8 | user[i + 3]
+            j = i + 4
+        if t == 0x03:
+            return j + length
+        i = j + length
+    return None
+
+
 def ndef_records(msg):
     """[(tnf, type_bytes, payload_bytes), ...] parsed from an NDEF message."""
     recs = []
@@ -263,7 +290,8 @@ async def _read_ntag(sys, reader):
             break
         raw += block
         page += 4
-        if raw.find(b"\xfe", 16) >= 0:
+        end = ndef_end(raw[16:])
+        if end is not None and 16 + end <= len(raw):
             break
         await sys.sleep_ms(2)
     return raw, size
@@ -603,7 +631,8 @@ async def _verify(sys, reader, text):
             break
         raw += block
         page += 4
-        if raw.find(b"\xfe") >= 0:
+        end = ndef_end(raw)
+        if end is not None and end <= len(raw):
             break
         await sys.sleep_ms(2)
     recs = ndef_records(ndef_message(raw))
