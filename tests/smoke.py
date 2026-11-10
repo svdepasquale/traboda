@@ -23,16 +23,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_WALK = "wait:900,snap:open,key:down,key:down,key:A,wait:600,snap:select,hold:A,wait:400,hold:A,wait:400,snap:back"
 
 
-def registry():
-    def tuples(path, name):
-        tree = ast.parse(open(path).read())
-        for node in tree.body:
-            if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == name:
-                return ast.literal_eval(node.value)
-        return ()
+def constant(path, name, default=()):
+    tree = ast.parse(open(path, encoding="utf-8").read())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == name:
+            return ast.literal_eval(node.value)
+    return default
 
-    apps = [a[0] for a in tuples(os.path.join(ROOT, "src/traboda/apps/__init__.py"), "APPS")]
-    games = [g[0] for g in tuples(os.path.join(ROOT, "src/traboda/apps/games/__init__.py"), "GAMES")]
+
+def registry():
+    apps = [a[0] for a in constant(os.path.join(ROOT, "src/traboda/apps/__init__.py"), "APPS")]
+    games = [g[0] for g in constant(os.path.join(ROOT, "src/traboda/apps/games/__init__.py"), "GAMES")]
     return apps, games
 
 
@@ -62,6 +63,14 @@ def main():
         print("mpy-cross: %d failure(s)" % len(failures))
     else:
         print("mpy-cross not found, skipping the compile check")
+
+    # Every on-screen keyboard key must have a glyph in the text font (else it draws "?").
+    chars = constant(os.path.join(ROOT, "src/traboda/fonts/text.py"), "CHARS", "")
+    keys = "".join("".join(p) for p in constant(os.path.join(ROOT, "src/traboda/ui.py"), "_PAGES"))
+    missing = sorted({c for c in keys if c not in chars})
+    if missing:
+        failures.append("keyboard keys without a text-font glyph: %s" % " ".join(missing))
+    print("keyboard glyphs: %s" % ("missing " + " ".join(missing) if missing else "ok"))
 
     out_root = tempfile.mkdtemp(prefix="traboda-smoke-")
     apps, games = registry()

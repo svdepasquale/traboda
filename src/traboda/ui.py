@@ -287,7 +287,7 @@ async def dialog(sys, title, message, options=("OK",), accent=ACCENT):
 _PAGES = (
     ("1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.-"),
     ("1234567890", "QWERTYUIOP", "ASDFGHJKL\"", "ZXCVBNM;:_"),
-    ("!@#$%^&*()", "[]{}<>/\\|~", "+=?`'\"€£°§", "àèéìòù¿¡·…"),
+    ("!@#$%^&*()", "[]{}<>/\\|~", "+=?`'\"€£°±", "àèéìòù¿¡·…"),
 )
 _SPECIAL = ("aA", "#!", "spazio", "canc", "OK")
 
