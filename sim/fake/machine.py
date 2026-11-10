@@ -225,4 +225,3 @@ def reset():
 
 def deepsleep(ms=0):
     raise SystemExit("machine.deepsleep()")
-

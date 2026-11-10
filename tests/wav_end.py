@@ -8,9 +8,7 @@ Plays synthetic WAVs through the simulator's I2S and checks the bytes sent: a ch
 
 import sys
 
-ROOT = sys.argv[0].rsplit("/", 2)[0] if "/" in sys.argv[0] else "."
-if ROOT.endswith("/tests") or ROOT == "tests":
-    ROOT = ROOT[:-5].rstrip("/") or "."
+ROOT = (sys.argv[0].rsplit("/", 1)[0] if "/" in sys.argv[0] else ".") + "/.."   # tests/..
 sys.path.insert(0, ROOT + "/src")
 sys.path.insert(0, ROOT + "/sim/fake")
 

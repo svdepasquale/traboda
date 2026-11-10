@@ -42,4 +42,3 @@ class Partition:
 
 def wake_on_ext0(pin, level):
     pass
-
