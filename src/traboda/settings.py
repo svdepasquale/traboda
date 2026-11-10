@@ -72,11 +72,7 @@ def save():
     try:
         with open(tmp, "w") as f:
             json.dump(_data, f)
-        try:
-            os.remove(path)
-        except OSError:
-            pass
-        os.rename(tmp, path)
+        os.rename(tmp, path)      # LittleFS replaces the old file atomically
     except OSError as e:          # full or failing flash: keep running on the RAM copy
         errors.append("settings: %s" % e)
 
