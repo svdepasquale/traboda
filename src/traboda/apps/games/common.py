@@ -165,7 +165,7 @@ async def start(sys, game):
 
 async def wait_keys_up(sys):
     """Waits (up to 1 s) for the keys still held from play, which would otherwise answer
-    the game-over dialog, then drops them; False on HOME. Unlike settle() below it
+    the game-over dialog, then drops them; False on HOME. Unlike settle() above it
     reports a HOME that arrived, so the game can leave at once."""
     for _ in range(50):
         if not sys.buttons.state:
